@@ -1,0 +1,15 @@
+/* Captioned, research-safe persona imagery */
+.persona{padding:0 17px 17px;overflow:hidden}
+.persona-photo{margin:0 -17px 16px;background:#dce6e1}
+.persona-photo img{display:block;width:100%;height:180px;object-fit:cover}
+.persona-photo figcaption,.draft-photo figcaption,.drawer-photo figcaption,.review-photo figcaption{padding:8px 11px;font-size:8px;line-height:1.4;color:#52665f;background:#eef3f0}
+.photo-empty{display:grid;place-items:center;min-height:130px;color:#6d7d77;font-size:10px;background:linear-gradient(135deg,#e5efe9,#f7e7da)}
+.draft{grid-template-columns:180px 1fr 150px}
+.draft-photo{margin:0}
+.draft-photo img{display:block;width:100%;height:125px;object-fit:cover;border-radius:8px 8px 0 0}
+.drawer-photo{margin:0 0 22px}
+.drawer-photo img{display:block;width:100%;height:260px;object-fit:cover;border-radius:10px 10px 0 0}
+.review-photo{margin:0 0 15px}
+.review-photo img{display:block;width:100%;height:190px;object-fit:cover;border-radius:8px 8px 0 0}
+@media(max-width:1050px){.draft{grid-template-columns:150px 1fr}.draft .side-actions{grid-column:2}}
+@media(max-width:760px){.draft{grid-template-columns:1fr}.draft-photo,.draft-card,.draft .side-actions{grid-column:1}.persona-photo img{height:210px}}
