@@ -10,7 +10,11 @@ function promptFor(body){return `You are assisting a UX researcher. Analyse only
 
 createServer(async(req,res)=>{
   if(req.method==='OPTIONS'){res.writeHead(204,{'access-control-allow-origin':process.env.ALLOWED_ORIGIN||'http://127.0.0.1:4173','access-control-allow-methods':'POST,OPTIONS','access-control-allow-headers':'content-type'});return res.end()}
-  if(req.method!=='POST'||new URL(req.url,'http://localhost').pathname!=='/api/analyze')return reply(res,404,{error:'Not found'});
+  const path=new URL(req.url,'http://localhost').pathname;if(req.method!=='POST'||!['/api/analyze','/api/import-url'].includes(path))return reply(res,404,{error:'Not found'});
+  if(path==='/api/import-url'){
+    let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>50_000)return reply(res,413,{error:'Request is too large'})}
+    try{const {url}=JSON.parse(raw),target=new URL(url);if(!['http:','https:'].includes(target.protocol))return reply(res,400,{error:'Only public HTTP(S) URLs are supported'});const page=await fetch(target,{headers:{'user-agent':'PersonaBuilderUniversityPrototype/1.0'}});if(!page.ok)return reply(res,422,{error:`The public page returned ${page.status}. Use manual import instead.`});const html=(await page.text()).slice(0,500_000),title=(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]||target.hostname).replace(/\s+/g,' ').trim(),content=html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/\s+/g,' ').replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[email removed]').replace(/(?:\+?\d[\s().-]*){8,}/g,'[phone removed]').trim().slice(0,50_000);return reply(res,200,{title,content,url:target.href})}catch(error){return reply(res,422,{error:`Could not extract this page: ${error.message}. Use manual import instead.`})}
+  }
   if(!apiKey)return reply(res,503,{error:'AI_API_KEY is not configured on the backend. No analysis was performed.'});
   let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>2_000_000)return reply(res,413,{error:'Request is too large'})}
   try{

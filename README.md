@@ -1,4 +1,4 @@
-# Persona Builder — Priority 1 MVP
+# Persona Builder — University Prototype
 
 Evidence-based UX research workspace for Lost & Found Pets in Lisbon.
 
@@ -22,17 +22,21 @@ In **Settings**, set the analysis endpoint to `http://127.0.0.1:8787/api/analyze
 
 ## Persistence
 
-Priority 1 records persist in the browser's local storage and can be used without an AI key. Research originals, observations, review decisions, personas and version history are stored separately. This is device-local prototype storage, not a multi-user database.
+Records persist in the browser's local storage and can be used without an AI key. Research originals, observations, review decisions, personas and version history are stored separately. This is device-local prototype storage, not a multi-user database.
 
 ## Implemented
 
-- Empty research-first workspace and manual proto-personas
-- TXT/CSV import, pasted text, and small PDF attachment retention
+- Empty research-first workspace plus three clearly labelled visual test templates
+- TXT/CSV import, pasted text, bulk record splitting, and small PDF attachment retention
+- On-demand public URL extraction/refresh through the backend, with prior content preserved
+- Source metadata editing and possible-duplicate flags
 - Source viewing and exact excerpt capture
 - Configurable server-side AI adapter with structured-output validation
 - Evidence and grouped-pattern review: approve, edit, reject
-- Persona creation and updates from approved patterns
+- Pattern merge/split and threshold-based persona proposals
+- Persona creation and updates from approved patterns, with evidence-aware sections
 - Persona version history in the stored data model
+- Persona comparison, evidence-linked connections/gaps, and solution hypotheses
 - Responsive dashboard and navigation matching the approved visual direction
 
-Priority 2 screens are intentionally labelled and contain honest empty states.
+Test template images are illustrative and never treated as research participants. Empty fields remain explicitly unknown until a researcher adds supported information.
