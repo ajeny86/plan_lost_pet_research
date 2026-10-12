@@ -3,3 +3,7 @@ persona-builder-*.tar.gz
 
 # macOS metadata
 .DS_Store
+
+# Locally generated presentation and PDF handoff files
+presentation-build/
+presentation-output/
