@@ -1,0 +1,5 @@
+# Local deployment packages created by the Sites publishing workflow
+persona-builder-*.tar.gz
+
+# macOS metadata
+.DS_Store
