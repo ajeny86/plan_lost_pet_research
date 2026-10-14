@@ -52,6 +52,10 @@ Integrity rules:
 - A behavioural pattern requires at least two observations from at least two independent source IDs. Do not mistake many quotations from one source for independent cases.
 - Group observations by underlying meaning, not literal wording, animal species or channel name. For example, "find my cat" and "find my dog" may support one broader goal pattern such as "recover the missing pet" when their intent is equivalent.
 - Prefer a smaller set of coherent cross-source patterns over many narrow restatements. Do not return a pattern that merely repeats one observation.
+- Build semantic clusters before writing pattern titles. Within the same participant role and evidence dimension, put all observations with the same underlying intent into one cluster, even when the animal, channel or wording differs.
+- Each observation may support only one primary pattern unless it is genuine counter-evidence. Do not create overlapping patterns that restate the same meaning.
+- Generalise only to the narrowest meaning supported by every observation in the cluster. Example: "find my cat" and "find my dog" become "recover the missing pet"; Facebook and WhatsApp reporting actions may become "share a lost-pet report through local online channels".
+- Pattern titles describe the shared behavioural meaning, not a participant, source, quote, animal species or isolated action.
 - Preserve contradictions. Do not force inconsistent observations into one pattern.
 - Preserve participant-role provenance throughout the analysis. Owner evidence belongs to Owner personas. Finder and Spotter evidence must remain distinct unless the supplied sources explicitly support the same broader Encounterer behaviour. Never combine Owner evidence with Finder or Spotter evidence in one pattern.
 - When participantRole is Unknown, keep it unknown and require researcher review instead of guessing a persona type.
@@ -111,6 +115,7 @@ Integrity rules:
 - A Facebook post, phone call, search action or platform choice is Behaviour, never Main goal.
 - Main goal is the desired end result. For an Owner in a lost-pet case this may be finding the missing pet and bringing them home safely, but only when the evidence context supports it.
 - Motivation is an explicitly supported driver; Constraint is an external or practical limit; Pain point is experienced friction or uncertainty; Need is the support or information required to progress.
+- Keep Decision-making, Level of involvement and Interactions as separate sections. Do not hide or merge them into Behaviours.
 - Do not copy unsupported content from the current draft. Return an empty array for an unsupported section and null for an unsupported main goal.
 - Write each item as one clear sentence in English. Do not include source IDs in the wording.
 
@@ -202,8 +207,11 @@ const personaSynthesisSchema = {
     constraints: { type: 'array', items: { type: 'string' } },
     painPoints: { type: 'array', items: { type: 'string' } },
     needs: { type: 'array', items: { type: 'string' } },
+    decisions: { type: 'array', items: { type: 'string' } },
+    involvement: { type: 'array', items: { type: 'string' } },
+    interactions: { type: 'array', items: { type: 'string' } },
   },
-  required: ['role', 'mainGoal', 'behaviours', 'motivations', 'constraints', 'painPoints', 'needs'],
+  required: ['role', 'mainGoal', 'behaviours', 'motivations', 'constraints', 'painPoints', 'needs', 'decisions', 'involvement', 'interactions'],
 };
 
 createServer(async (req, res) => {
@@ -331,11 +339,18 @@ createServer(async (req, res) => {
     });
     const validKeys = new Set(observations.map(item => item.key));
     const sourceForKey = new Map(observations.map(item => [item.key, item.sourceId]));
-    const patterns = (parsed.patterns || []).filter(pattern => {
+    const observationForKey = new Map(observations.map(item => [item.key, item]));
+    const usedPrimaryKeys = new Set();
+    const patterns = (parsed.patterns || []).sort((a, b) => (b.observationKeys?.length || 0) - (a.observationKeys?.length || 0)).filter(pattern => {
       pattern.observationKeys = [...new Set(pattern.observationKeys || [])].filter(key => validKeys.has(key));
       pattern.counterEvidenceKeys = [...new Set(pattern.counterEvidenceKeys || [])].filter(key => validKeys.has(key));
+      pattern.observationKeys = pattern.observationKeys.filter(key => !usedPrimaryKeys.has(key));
       const independentSources = new Set(pattern.observationKeys.map(key => sourceForKey.get(key)));
-      return pattern.observationKeys.length >= 2 && independentSources.size >= 2;
+      const dimensions = new Set(pattern.observationKeys.map(key => observationForKey.get(key)?.dimension).filter(Boolean));
+      const roles = new Set(pattern.observationKeys.map(key => sourceMap.get(sourceForKey.get(key))?.participantRole).filter(role => role && role !== 'Unknown'));
+      const valid = pattern.observationKeys.length >= 2 && independentSources.size >= 2 && dimensions.size === 1 && roles.size <= 1;
+      if (valid) pattern.observationKeys.forEach(key => usedPrimaryKeys.add(key));
+      return valid;
     });
     return reply(req, res, 200, { observations, patterns });
   } catch (error) {
