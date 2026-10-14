@@ -17,8 +17,8 @@
         <label>Lisbon location<input id="sourceLocation" placeholder="Unknown"></label>
       </div>
       <div class="field-row">
-        <label>Incident date<input id="incidentDate" type="date"></label>
-        <label>Publication date<input id="publicationDate" type="date"></label>
+        <label>Incident date (YYYY-MM-DD)<input id="incidentDate" type="text" inputmode="numeric" placeholder="YYYY-MM-DD"></label>
+        <label>Publication date (YYYY-MM-DD)<input id="publicationDate" type="text" inputmode="numeric" placeholder="YYYY-MM-DD"></label>
       </div>
       <label>Known outcome<input id="caseOutcome" placeholder="Unknown"></label>
       <label>Relevant comments or updates<textarea id="sourceUpdates" rows="3" placeholder="Unknown"></textarea></label>
