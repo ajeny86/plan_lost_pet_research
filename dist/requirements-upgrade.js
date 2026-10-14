@@ -486,5 +486,24 @@
     } catch (error) { toast(`Backup import failed: ${error.message}`); }
   };
 
+  // Prevent browser-localised validation bubbles (for example Safari showing
+  // Russian UI text) and keep all validation feedback inside the English app UI.
+  $$('form').forEach(form => {
+    form.noValidate = true;
+    form.addEventListener('submit', event => {
+      const missing = [...form.querySelectorAll('[required]')].find(field => {
+        if (field.type === 'checkbox' || field.type === 'radio') return !field.checked;
+        if (field.multiple) return !field.selectedOptions.length;
+        return !field.value.trim();
+      });
+      if (!missing) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const label = missing.closest('label')?.childNodes[0]?.textContent?.trim() || 'required field';
+      toast(`Complete the ${label.toLowerCase()} field`);
+      missing.focus();
+    }, true);
+  });
+
   render();
 })();

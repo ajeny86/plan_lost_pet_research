@@ -11,6 +11,7 @@
 .source-metadata-fields,.data-portability{border:1px solid #e5e4ee;border-radius:12px;background:#faf9ff;padding:14px;display:grid;gap:11px}
 .source-metadata-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;color:var(--navy)}
 .source-metadata-heading span{font-size:9px;color:var(--muted)}
+.gap-guidance p{margin:5px 0 0;line-height:1.45}.field-help{font-size:9px;font-weight:500;color:var(--muted);line-height:1.4}
 .privacy-check{display:flex!important;grid-template-columns:18px 1fr!important;align-items:flex-start;gap:9px!important;padding:11px 12px;border-radius:9px;background:#fff4da;color:#785922;font-weight:600!important;line-height:1.45}
 .privacy-check input{width:auto;margin-top:2px}
 .form-error{margin:0 auto 0 0;padding:10px 12px;border:1px solid #e6a6a0;border-radius:12px;background:#fff2f0;color:#8c2820;font-size:13px;font-weight:700;line-height:1.35;flex:1;max-width:480px}
