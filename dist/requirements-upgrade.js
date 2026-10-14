@@ -856,8 +856,15 @@
     });
     $('#analyseBtn').disabled = true;
     $('#analyseBtn').textContent = 'Analysing…';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+    const startupNotice = setTimeout(() => {
+      $('#analyseBtn').textContent = 'Starting analysis service…';
+      $('#aiConfigNotice').className = 'notice neutral';
+      $('#aiConfigNotice').innerHTML = '<b>The secure analysis service is starting.</b> This can take up to one minute after a period of inactivity.';
+    }, 8000);
     try {
-      const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ project: { name: 'Lost & Found Pets', location: 'Lisbon, Portugal' }, provider: state.settings.provider, model: state.settings.model, sources: pending.map(({ fileData, ...record }) => record), existingPatterns }) });
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ project: { name: 'Lost & Found Pets', location: 'Lisbon, Portugal' }, provider: state.settings.provider, model: state.settings.model, sources: pending.map(({ fileData, ...record }) => record), existingPatterns }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || `Backend returned ${response.status}`);
       if (!Array.isArray(data.observations)) throw new Error('Backend response did not include observations');
@@ -883,10 +890,13 @@
       log(`AI analysed ${pending.length} source(s), compared them with ${existingPatterns.length} existing pattern(s), and proposed ${keyToId.size} observation(s)`);
       save(); render(); toast('New evidence was compared with existing patterns and is ready for review');
     } catch (error) {
-      toast(`Analysis unavailable: ${error.message}`);
+      const message = error.name === 'AbortError' ? 'The analysis service did not respond within 60 seconds. No findings were changed. Please try again after the backend has restarted.' : error.message;
+      toast(`Analysis unavailable: ${message}`);
       $('#aiConfigNotice').className = 'notice';
-      $('#aiConfigNotice').innerHTML = `<b>Analysis failed honestly—no findings were created.</b> ${esc(error.message)}`;
+      $('#aiConfigNotice').innerHTML = `<b>Analysis stopped safely—no findings were created.</b> ${esc(message)}`;
     } finally {
+      clearTimeout(timeout);
+      clearTimeout(startupNotice);
       $('#analyseBtn').disabled = false;
       $('#analyseBtn').textContent = '✦ Analyse unprocessed research';
     }

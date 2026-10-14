@@ -207,6 +207,8 @@ const personaSynthesisSchema = {
 };
 
 createServer(async (req, res) => {
+  const pathname = new URL(req.url, 'http://localhost').pathname;
+  if (req.method === 'GET' && pathname === '/health') return reply(req, res, 200, { status: 'ok', service: 'persona-builder-analysis' });
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'access-control-allow-origin': allowedOrigin(req),
@@ -216,7 +218,6 @@ createServer(async (req, res) => {
     return res.end();
   }
 
-  const pathname = new URL(req.url, 'http://localhost').pathname;
   if (req.method !== 'POST' || !['/api/analyze', '/api/import-url', '/api/extract-metadata', '/api/synthesize-persona'].includes(pathname)) {
     return reply(req, res, 404, { error: 'Not found' });
   }
