@@ -22,13 +22,13 @@
       </div>
       <label>Known outcome<input id="caseOutcome" placeholder="Unknown"></label>
       <label>Relevant comments or updates<textarea id="sourceUpdates" rows="3" placeholder="Unknown"></textarea></label>
-      <label>Optional photograph or screenshot<input id="sourceImage" type="file" accept="image/png,image/jpeg,image/webp"></label>
+      <label class="custom-file-field">Optional photograph or screenshot<span class="custom-file-control"><span class="custom-file-button">Choose file</span><span id="sourceImageName">No file selected</span></span><input id="sourceImage" class="native-file-input" type="file" accept="image/png,image/jpeg,image/webp"></label>
     </section>
   `);
   researchDialogBody.insertAdjacentHTML('beforeend', `
-    <p class="form-error" id="researchFormError" role="alert" aria-live="polite" hidden></p>
     <label class="privacy-check"><input id="privacyConfirmed" type="checkbox"> I checked this material for names, phone numbers and private addresses. Common email and phone formats will also be redacted before storage.</label>
   `);
+  $('#researchForm .dialog-actions').insertAdjacentHTML('afterbegin', '<p class="form-error" id="researchFormError" role="alert" aria-live="polite" hidden></p>');
   $('#researchForm').noValidate = true;
 
   function researchFormError(message = '', field = null) {
@@ -36,7 +36,7 @@
     error.textContent = message;
     error.hidden = !message;
     if (message) {
-      error.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      toast(message);
       field?.focus();
     }
     return false;
@@ -104,6 +104,8 @@
   openResearch = function (sid = null) {
     $('#researchForm').reset();
     researchFormError();
+    $('#sourceFileName').textContent = 'No file selected';
+    $('#sourceImageName').textContent = 'No file selected';
     $('#researchForm').dataset.editId = sid || '';
     $('#sourceDate').value = new Date().toISOString().slice(0, 10);
     const record = sid ? source(sid) : null;
@@ -394,6 +396,8 @@
   };
 
   $('#researchForm').onsubmit = saveResearch;
+  $('#sourceFile').onchange = event => { $('#sourceFileName').textContent = event.target.files[0]?.name || 'No file selected'; };
+  $('#sourceImage').onchange = event => { $('#sourceImageName').textContent = event.target.files[0]?.name || 'No file selected'; };
   $('#personaForm').onsubmit = savePersona;
   $('#observationForm').onsubmit = saveObservation;
   $('#solutionForm').onsubmit = saveSolution;
