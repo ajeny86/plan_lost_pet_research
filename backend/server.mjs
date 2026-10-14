@@ -5,13 +5,24 @@ const port = Number(process.env.PORT || 8787);
 const apiKey = process.env.AI_API_KEY || '';
 const base = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
 const model = process.env.AI_MODEL || 'gpt-4.1-mini';
-const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://127.0.0.1:4173';
+const allowedOrigins = new Set([
+  'http://127.0.0.1:4173',
+  'https://persona-atlas.rightotter16.chatgpt.site',
+  'https://ajeny86.github.io',
+  ...(process.env.ALLOWED_ORIGIN || '').split(',').map(value => value.trim()).filter(Boolean),
+]);
 
-function reply(res, status, data) {
+function allowedOrigin(req) {
+  const origin = req.headers.origin;
+  return allowedOrigins.has(origin) ? origin : 'https://persona-atlas.rightotter16.chatgpt.site';
+}
+
+function reply(req, res, status, data) {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
-    'access-control-allow-origin': allowedOrigin,
+    'access-control-allow-origin': allowedOrigin(req),
     'access-control-allow-headers': 'content-type',
+    vary: 'Origin',
   });
   res.end(JSON.stringify(data));
 }
@@ -90,7 +101,7 @@ const analysisSchema = {
 createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
-      'access-control-allow-origin': allowedOrigin,
+      'access-control-allow-origin': allowedOrigin(req),
       'access-control-allow-methods': 'POST,OPTIONS',
       'access-control-allow-headers': 'content-type',
     });
@@ -99,25 +110,25 @@ createServer(async (req, res) => {
 
   const pathname = new URL(req.url, 'http://localhost').pathname;
   if (req.method !== 'POST' || !['/api/analyze', '/api/import-url'].includes(pathname)) {
-    return reply(res, 404, { error: 'Not found' });
+    return reply(req, res, 404, { error: 'Not found' });
   }
 
   if (pathname === '/api/import-url') {
     let raw = '';
     for await (const chunk of req) {
       raw += chunk;
-      if (raw.length > 50_000) return reply(res, 413, { error: 'Request is too large' });
+      if (raw.length > 50_000) return reply(req, res, 413, { error: 'Request is too large' });
     }
     try {
       const { url } = JSON.parse(raw);
       const target = new URL(url);
       if (!['http:', 'https:'].includes(target.protocol) || isPrivateHost(target.hostname)) {
-        return reply(res, 400, { error: 'Only public HTTP(S) URLs are supported' });
+        return reply(req, res, 400, { error: 'Only public HTTP(S) URLs are supported' });
       }
       const page = await fetch(target, { redirect: 'error', headers: { 'user-agent': 'PersonaBuilderUniversityPrototype/2.0' } });
-      if (!page.ok) return reply(res, 422, { error: `The public page returned ${page.status}. Use manual import instead.` });
+      if (!page.ok) return reply(req, res, 422, { error: `The public page returned ${page.status}. Use manual import instead.` });
       const type = page.headers.get('content-type') || '';
-      if (!type.includes('text/html') && !type.includes('text/plain')) return reply(res, 422, { error: 'This source is not a readable public text page. Use manual import instead.' });
+      if (!type.includes('text/html') && !type.includes('text/plain')) return reply(req, res, 422, { error: 'This source is not a readable public text page. Use manual import instead.' });
       const html = (await page.text()).slice(0, 500_000);
       const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || target.hostname).replace(/\s+/g, ' ').trim();
       const content = redactPersonalData(html
@@ -129,23 +140,23 @@ createServer(async (req, res) => {
         .replace(/\s+/g, ' ')
         .trim())
         .slice(0, 50_000);
-      return reply(res, 200, { title, content, url: target.href });
+      return reply(req, res, 200, { title, content, url: target.href });
     } catch (error) {
-      return reply(res, 422, { error: `Could not extract this page: ${error.message}. Use manual import instead.` });
+      return reply(req, res, 422, { error: `Could not extract this page: ${error.message}. Use manual import instead.` });
     }
   }
 
-  if (!apiKey) return reply(res, 503, { error: 'AI_API_KEY is not configured on the backend. No analysis was performed.' });
+  if (!apiKey) return reply(req, res, 503, { error: 'AI_API_KEY is not configured on the backend. No analysis was performed.' });
 
   let raw = '';
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 2_000_000) return reply(res, 413, { error: 'Request is too large' });
+    if (raw.length > 2_000_000) return reply(req, res, 413, { error: 'Request is too large' });
   }
 
   try {
     const body = JSON.parse(raw);
-    if (!Array.isArray(body.sources) || !body.sources.length) return reply(res, 400, { error: 'No research sources supplied' });
+    if (!Array.isArray(body.sources) || !body.sources.length) return reply(req, res, 400, { error: 'No research sources supplied' });
     const upstream = await fetch(`${base}/responses`, {
       method: 'POST',
       headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
@@ -156,9 +167,9 @@ createServer(async (req, res) => {
       }),
     });
     const data = await upstream.json();
-    if (!upstream.ok) return reply(res, 502, { error: data.error?.message || 'AI provider request failed' });
+    if (!upstream.ok) return reply(req, res, 502, { error: data.error?.message || 'AI provider request failed' });
     const outputText = data.output?.flatMap(item => item.content || []).find(item => item.type === 'output_text')?.text;
-    if (!outputText) return reply(res, 502, { error: 'AI provider returned no structured output' });
+    if (!outputText) return reply(req, res, 502, { error: 'AI provider returned no structured output' });
     const parsed = JSON.parse(outputText);
     const sourceMap = new Map(body.sources.map(source => [source.id, source]));
     const observations = (parsed.observations || []).filter(item => {
@@ -173,8 +184,8 @@ createServer(async (req, res) => {
       const independentSources = new Set(pattern.observationKeys.map(key => sourceForKey.get(key)));
       return pattern.observationKeys.length >= 2 && independentSources.size >= 2;
     });
-    return reply(res, 200, { observations, patterns });
+    return reply(req, res, 200, { observations, patterns });
   } catch (error) {
-    return reply(res, 500, { error: `Analysis failed: ${error.message}. No findings were saved.` });
+    return reply(req, res, 500, { error: `Analysis failed: ${error.message}. No findings were saved.` });
   }
 }).listen(port, () => console.log(`Persona Builder analysis backend: http://127.0.0.1:${port}`));
