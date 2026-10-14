@@ -11,6 +11,19 @@
   state.deletedTemplateIds ??= ['test-owner'];
   let templatePendingDeletion = null;
 
+  function purgePersonaArtifacts(personaId, personaName = '') {
+    state.personaUpdates = (state.personaUpdates || []).filter(item => item.personaId !== personaId);
+    state.gaps = (state.gaps || []).filter(item => !(item.personaIds || []).includes(personaId));
+    state.solutions = (state.solutions || []).filter(item => !(item.personaIds || []).includes(personaId));
+    state.proposals = (state.proposals || []).filter(item => item.personaId !== personaId && !(item.personaIds || []).includes(personaId));
+    (state.patterns || []).forEach(pattern => { pattern.affectedPersonaIds = (pattern.affectedPersonaIds || []).filter(id => id !== personaId); });
+    (state.analysisArchives || []).forEach(archive => { archive.personaEvidenceLinks = (archive.personaEvidenceLinks || []).filter(item => item.personaId !== personaId); });
+    if (personaName) state.activity = (state.activity || []).filter(item => !String(item.action || '').includes(personaName));
+  }
+
+  for (const deletedId of state.deletedTemplateIds) purgePersonaArtifacts(deletedId, TEST_PERSONAS.find(item => item.id === deletedId)?.name || '');
+  save();
+
   function uniqueStatements(items) {
     const seen = new Set();
     return (items || []).map(item => String(item).trim()).filter(item => {
@@ -78,7 +91,7 @@
   `);
 
   $('#solutionStatus').closest('label').insertAdjacentHTML('afterend', `
-    <label>Relevant personas<select id="solutionPersonas" multiple size="4"></select></label>
+    <label>Relevant personas<span class="field-help">Choose every persona affected by this hypothesis. Demonstration profiles remain clearly marked as test personas.</span><select id="solutionPersonas" multiple size="4"></select></label>
   `);
 
   $('#settingsForm .dialog-body').insertAdjacentHTML('beforeend', `
@@ -377,13 +390,13 @@
   }
 
   function relationshipMap() {
-    const personas = state.personas.filter(persona => !persona.template);
+    const personas = state.personas;
     const visible = state.gaps.filter(gap => gap.status !== 'rejected');
     const mappedPatternIds = new Set(state.gaps.flatMap(gap => gap.patternIds || []));
     const unmappedPatterns = state.patterns.filter(pattern => pattern.status === 'approved' && !mappedPatternIds.has(pattern.id));
     const personaById = new Map(personas.map(persona => [persona.id, persona]));
     const routes = visible.map(gap => {
-      const linked = (gap.personaIds || []).map(personaId => personaById.get(personaId)).filter(Boolean);
+      const linked = (gap.personaIds || []).map(personaId => personaById.get(personaId)).filter(Boolean).map(persona => ({ ...persona, role: persona.template ? `Test persona · ${persona.role}` : persona.role }));
       const nodes = linked.length ? linked : [{ name: 'Persona not assigned', role: 'Select a persona in the card' }];
       const destination = nodes.length > 1 ? nodes.slice(1) : [{ name: 'Evidence still needed', role: 'Add another persona or supporting pattern' }];
       const kind = relationshipTypeClass(gap.type);
@@ -455,18 +468,32 @@
     openGap(gapId);
   }
 
-  const originalOpenSolution = openSolution;
   openSolution = function (solutionId = null) {
-    originalOpenSolution(solutionId);
+    const evidence = [
+      ...state.patterns.filter(item => item.status === 'approved').map(item => ({ id: `pattern:${item.id}`, label: `Pattern: ${item.title}` })),
+      ...state.gaps.filter(item => item.status === 'approved').map(item => ({ id: `gap:${item.id}`, label: `Gap: ${item.title || 'Not enough information'}` }))
+    ];
     const solution = solutionId ? state.solutions.find(item => item.id === solutionId) : null;
+    $('#solutionForm').reset();
+    $('#solutionForm').dataset.id = solutionId || '';
+    $('#solutionEvidence').innerHTML = `<option value="">Not enough information — select approved evidence when available</option>${evidence.map(item => `<option value="${item.id}">${esc(item.label)}</option>`).join('')}`;
+    if (solution) {
+      $('#solutionTitle').value = solution.title || '';
+      $('#solutionProblem').value = solution.problem || '';
+      $('#solutionText').value = solution.text || '';
+      $('#solutionEvidence').value = solution.evidenceId || '';
+      $('#solutionStatus').value = solution.status || 'AI Suggestion';
+      $('#solutionComment').value = solution.comment || '';
+    }
     const selected = new Set(solution?.personaIds || []);
-    $('#solutionPersonas').innerHTML = state.personas.filter(persona => !persona.template).map(persona => `<option value="${persona.id}" ${selected.has(persona.id) ? 'selected' : ''}>${esc(persona.name)}</option>`).join('');
+    $('#solutionPersonas').innerHTML = state.personas.map(persona => `<option value="${persona.id}" ${selected.has(persona.id) ? 'selected' : ''}>${persona.template ? '[Test persona] ' : ''}${esc(persona.name)} · ${esc(persona.role)}</option>`).join('');
+    show('#solutionDialog');
   };
 
   saveSolution = function (event) {
     event.preventDefault();
     const evidenceId = $('#solutionEvidence').value;
-    const evidenceLabel = $('#solutionEvidence').selectedOptions[0]?.textContent || 'Unknown evidence';
+    const evidenceLabel = evidenceId ? $('#solutionEvidence').selectedOptions[0]?.textContent : '';
     const personaIds = [...$('#solutionPersonas').selectedOptions].map(item => item.value);
     const data = { title: $('#solutionTitle').value.trim(), problem: $('#solutionProblem').value.trim(), text: $('#solutionText').value.trim(), evidenceId, evidenceLabel, personaIds, status: $('#solutionStatus').value, comment: $('#solutionComment').value.trim(), updated: now() };
     const solutionId = event.target.dataset.id;
@@ -476,9 +503,12 @@
   };
 
   solutions = function () {
+    const missing = 'Not enough information';
     $('#solutionList').innerHTML = state.solutions.length ? state.solutions.map(solution => {
-      const names = (solution.personaIds || []).map(personaId => state.personas.find(persona => persona.id === personaId)?.name).filter(Boolean);
-      return `<article class="pattern-card"><span class="status ${solution.status.toLowerCase().replaceAll(' ', '-')}">${esc(solution.status)}</span><div class="card-title">${esc(solution.title)}</div><p><b>Problem:</b> ${esc(solution.problem)}</p><p><b>Hypothesis:</b> ${esc(solution.text)}</p><div class="meta">Evidence: ${esc(solution.evidenceLabel)}${names.length ? ` · Personas: ${esc(names.join(', '))}` : ''}${solution.comment ? ` · Comment: ${esc(solution.comment)}` : ''}</div><div class="review-actions"><button class="tiny" data-edit-solution="${solution.id}">Edit / update status</button></div></article>`;
+      const linkedPersonas = (solution.personaIds || []).map(personaId => state.personas.find(persona => persona.id === personaId)).filter(Boolean);
+      const names = linkedPersonas.map(persona => `${persona.template ? '[Test] ' : ''}${persona.name}`);
+      const field = (label, value, expectation) => `<div class="solution-field ${value ? '' : 'missing-field'}"><b>${label}</b><span>${esc(value || `${missing} — expected: ${expectation}`)}</span></div>`;
+      return `<article class="pattern-card solution-card"><div class="relationship-card-head"><span class="eyebrow">SOLUTION HYPOTHESIS</span><span class="status ${solution.status.toLowerCase().replaceAll(' ', '-')}">${esc(solution.status)}</span></div><div class="card-title">${esc(solution.title || `${missing} — expected: a short solution name`)}</div>${field('Problem or gap', solution.problem, 'the evidence-backed problem this idea addresses.')}${field('Proposed response', solution.text, 'a concise, testable solution hypothesis.')}${field('Relevant personas', names.join(' · '), 'one or more affected personas.')}${field('Supporting evidence', solution.evidenceLabel, 'an approved grouped pattern or connection gap.')}${field('Review note', solution.comment, 'optional context, assumptions or the next validation step.')}<div class="review-actions"><button class="tiny" data-edit-solution="${solution.id}">Edit / update status</button></div></article>`;
     }).join('') : empty('No solution hypotheses', 'Add an idea only after an evidence-backed problem or gap is identified.');
     bindDynamic();
   };
@@ -1024,8 +1054,10 @@
     state.deletedTemplateIds ??= [];
     state.deletedTemplateIds = [...new Set([...state.deletedTemplateIds, persona.id])];
     state.personas = state.personas.filter(item => item.id !== persona.id);
-    state.personaUpdates = state.personaUpdates.filter(item => item.personaId !== persona.id);
-    log(`Deleted test persona: ${persona.name}`);
+    purgePersonaArtifacts(persona.id, persona.name);
+    activePersona = null;
+    $('#comparisonPanel').innerHTML = '';
+    log('Deleted a test persona and its derived references');
     templatePendingDeletion = null;
     save(); closeDialogs(); render(); go('personas'); toast('Test persona deleted');
   };
