@@ -384,9 +384,24 @@
       const linked = (gap.personaIds || []).map(personaId => personaById.get(personaId)).filter(Boolean);
       const nodes = linked.length ? linked : [{ name: 'Persona not assigned', role: 'Select a persona in the card' }];
       const destination = nodes.length > 1 ? nodes.slice(1) : [{ name: 'Evidence still needed', role: 'Add another persona or supporting pattern' }];
-      return `<button class="relationship-route ${relationshipTypeClass(gap.type)}" data-gap-focus="${gap.id}"><span class="relationship-node"><b>${esc(nodes[0].name)}</b><small>${esc(nodes[0].role)}</small></span><span class="relationship-connector"><i></i><b>${esc(gap.type)}</b><small>${esc(gap.title || 'Not enough information')}</small><i></i></span><span class="relationship-destinations">${destination.map(persona => `<span class="relationship-node"><b>${esc(persona.name)}</b><small>${esc(persona.role)}</small></span>`).join('')}</span></button>`;
+      const kind = relationshipTypeClass(gap.type);
+      const marker = kind === 'connection' ? '✓' : kind === 'information-gap' ? '!' : '≠';
+      const stateLabel = kind === 'connection' ? 'Connection' : kind === 'information-gap' ? 'Break in information flow' : 'Different behaviour';
+      return `<button class="relationship-route ${kind}" data-gap-focus="${gap.id}"><span class="relationship-node"><span class="relationship-node-icon">◎</span><span><b>${esc(nodes[0].name)}</b><small>${esc(nodes[0].role)}</small></span></span><span class="relationship-connector"><span class="relationship-caption"><b>${esc(stateLabel)}</b><small>${esc(gap.title || 'Not enough information')}</small></span><span class="relationship-line"><i></i><em>${marker}</em><i></i></span></span><span class="relationship-destinations">${destination.map(persona => `<span class="relationship-node"><span class="relationship-node-icon">◎</span><span><b>${esc(persona.name)}</b><small>${esc(persona.role)}</small></span></span>`).join('')}</span></button>`;
     }).join('');
-    $('#gapMap').innerHTML = `<section class="relationship-map"><div class="relationship-map-head"><div><span class="eyebrow">PERSONA RELATIONSHIP MAP</span><h2>Connections and evidence gaps</h2><p>Each line links the personas named in a relationship card. Select a line to review its details.</p></div><div class="relationship-legend"><span class="connection">Connection</span><span class="information-gap">Information gap</span><span class="behaviour-gap">Behavioural gap</span></div></div>${routes||`<div class="relationship-empty"><b>No relationships mapped yet</b><p>Add a connection or gap to make cross-persona evidence visible here.</p></div>`}</section>`;
+    $('#gapMap').innerHTML = `<section class="relationship-map"><div class="relationship-map-head"><div><span class="eyebrow">PERSONA RELATIONSHIP FLOW</span><h2>How information and behaviour connect</h2><p>Choose a flow type, then follow its arrows between personas. Select any route to inspect the supporting evidence.</p></div><div class="relationship-legend" role="group" aria-label="Filter relationship flow"><button class="active" data-flow-filter="all">All flows</button><button class="connection" data-flow-filter="connection">Connections</button><button class="information-gap" data-flow-filter="information-gap">Information gaps</button><button class="behaviour-gap" data-flow-filter="behaviour-gap">Behavioural gaps</button></div></div><div class="relationship-flow-canvas">${routes||`<div class="relationship-empty"><b>No relationships mapped yet</b><p>Add a connection or gap to draw the first flow between personas.</p></div>`}<div class="relationship-filter-empty" hidden><b>No arrows of this type yet</b><span>Create a relationship card or choose another flow type.</span></div></div></section>`;
+    $$('[data-flow-filter]').forEach(filter => filter.onclick = () => {
+      const selected = filter.dataset.flowFilter;
+      $$('[data-flow-filter]').forEach(item => item.classList.toggle('active', item === filter));
+      let shown = 0;
+      $$('.relationship-route').forEach(route => {
+        const visibleForFilter = selected === 'all' || route.classList.contains(selected);
+        route.hidden = !visibleForFilter;
+        if (visibleForFilter) shown += 1;
+      });
+      const emptyState = $('.relationship-filter-empty');
+      if (emptyState) emptyState.hidden = shown > 0;
+    });
     $$('[data-gap-focus]').forEach(button => button.onclick = () => {
       const card = $(`#gap-${button.dataset.gapFocus}`);
       if (!card) return;
