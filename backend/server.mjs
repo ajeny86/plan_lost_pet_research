@@ -112,10 +112,14 @@ function personaSynthesisPromptFor(body) {
 Integrity rules:
 - Use only the supplied approved patterns and observations. Never invent details, demographics, motives, needs or goals.
 - Merge semantic duplicates into one concise statement. Preserve meaningfully different behaviours and contradictory evidence as separate statements.
-- A Facebook post, phone call, search action or platform choice is Behaviour, never Main goal.
-- Main goal is the desired end result. For an Owner in a lost-pet case this may be finding the missing pet and bringing them home safely, but only when the evidence context supports it.
-- Motivation is an explicitly supported driver; Constraint is an external or practical limit; Pain point is experienced friction or uncertainty; Need is the support or information required to progress.
-- Map Action, Decision-making, Level of involvement and Interaction evidence into Behaviours. Preserve their distinct meaning as separate behaviour statements; do not discard them.
+- Treat the observation dimension as the primary classification. Do not move an item to another section merely because its wording contains "because", "wanted" or a platform name.
+- Main goal: the desired end result supported by Goal evidence or by an explicit role plus lost/found case context. Never use an action, channel, platform or intermediate step as the goal.
+- Behaviours: observable actions, channel or tool use, search tactics, decisions and interactions. Map Action, Decision-making, Level of involvement and Interaction evidence here. A Facebook post, phone call, search action or platform choice always belongs here.
+- Motivations: the broader purpose or driver for taking action, only when explicitly supported. A reason for choosing Facebook, a particular group or another channel is decision-making and therefore Behaviour—not Motivation.
+- Constraints: external or practical conditions that limit action, such as time, transport, permission, housing or inability to stop. Do not put confusion or missing knowledge here.
+- Pain points: experienced friction, uncertainty, repetition, delay or difficulty. Do not phrase a proposed solution as a pain point.
+- Needs: information, guidance, coordination or capability required to make progress. Do not copy an action as a need; describe the missing support only when evidence states or clearly requests it.
+- Preserve meaningfully distinct Behaviour evidence as separate statements; do not discard Decision-making, Level of involvement or Interaction evidence.
 - Do not copy unsupported content from the current draft. Return an empty array for an unsupported section and null for an unsupported main goal.
 - Write each item as one clear sentence in English. Do not include source IDs in the wording.
 

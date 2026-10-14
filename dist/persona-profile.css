@@ -18,14 +18,14 @@
 .persona-view-sections summary{display:grid;grid-template-columns:54px 1fr 24px;align-items:center;gap:14px;min-height:86px;padding:14px 17px;cursor:pointer;list-style:none}
 .persona-view-sections summary::-webkit-details-marker{display:none}
 .persona-section-icon{display:grid;place-items:center;width:54px;height:54px;border-radius:15px;background:linear-gradient(145deg,#f1efff,#e8eaff);color:#5268d2;font-size:27px;font-family:Georgia,serif}
-.persona-view-sections h3{font:700 15px/1.2 Inter,ui-sans-serif,system-ui,sans-serif;margin:0 0 6px;color:var(--navy)}
+.persona-view-sections h3{font:700 16px/1.2 Inter,ui-sans-serif,system-ui,sans-serif;margin:0 0 6px;color:var(--navy)}
 .persona-view-sections ul{margin:0;padding-left:17px}
-.persona-view-sections li,.persona-view-sections p{font-size:12px;line-height:1.45;color:#626a88;margin:0}
+.persona-view-sections li,.persona-view-sections p{font-size:14px;line-height:1.55;color:#555d7b;margin:0}
 .persona-view-sections .missing{font-style:italic;color:#8a91ac}
 .persona-section-preview{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
 .persona-section-arrow{color:#929ab9;font-size:31px;font-weight:300;text-align:right;transition:transform .2s ease}
 .persona-view-sections details[open] .persona-section-arrow{transform:rotate(90deg)}
-.persona-section-detail{padding:0 18px 18px 85px;border-top:1px solid #f0f0f5}
+.persona-section-detail{padding:0 22px 20px 85px;border-top:1px solid #f0f0f5}
 .persona-section-detail ul{margin-top:14px}
 .persona-view-note{margin-top:14px;padding:12px 14px;border-radius:12px;background:#f5f5fa;color:#69708b;font-size:10px}
 .persona-view-actions{position:sticky;bottom:0;z-index:3;padding:18px 28px 24px;background:rgba(255,255,255,.97);border-top:1px solid #ececf2;display:grid;grid-template-columns:1fr 1fr;gap:12px}
