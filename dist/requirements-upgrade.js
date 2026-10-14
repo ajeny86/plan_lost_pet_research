@@ -496,6 +496,29 @@
     save(); render(); toast(`Pattern added to ${persona.name}'s update queue`);
   };
 
+  async function editPatternAssignment(patternId) {
+    const candidates = state.personas.filter(persona => !persona.template);
+    const currentUpdates = state.personaUpdates.filter(update => update.status === 'pending' && update.patternIds.includes(patternId));
+    if (!candidates.length) return toast('Create an evidence-based persona first');
+    const answer = await requestText('Edit pattern assignment', `Enter 0 to remove it from the update queue, or choose a persona: ${candidates.map((persona, index) => `${index + 1}. ${persona.name}`).join(' · ')}`, currentUpdates.length ? String(candidates.findIndex(persona => persona.id === currentUpdates[0].personaId) + 1) : '1');
+    if (answer === null) return;
+    currentUpdates.forEach(update => { update.patternIds = update.patternIds.filter(id => id !== patternId); });
+    state.personaUpdates = state.personaUpdates.filter(update => update.status !== 'pending' || update.patternIds.length);
+    if (String(answer).trim() !== '0') {
+      const persona = candidates[Number(answer) - 1];
+      if (!persona) return toast('Choose a listed persona number or enter 0');
+      let update = state.personaUpdates.find(item => item.personaId === persona.id && item.status === 'pending');
+      if (!update) { update = { id: id('update'), personaId: persona.id, patternIds: [], status: 'pending', created: now() }; state.personaUpdates.unshift(update); }
+      update.patternIds = [...new Set([...update.patternIds, patternId])];
+      update.updated = now();
+      log(`Reassigned approved pattern to ${persona.name}`);
+      save(); render(); toast(`Pattern assigned to ${persona.name}`);
+      return;
+    }
+    log('Removed a pattern from the persona update queue');
+    save(); render(); toast('Pattern removed from the persona update queue');
+  }
+
   async function reviewPersonaUpdate(updateId) {
     const update = state.personaUpdates.find(item => item.id === updateId && item.status === 'pending');
     const persona = update && state.personas.find(item => item.id === update.personaId);
@@ -653,9 +676,9 @@
       const editable = reviewGroup(pattern) === 'pending' || reviewGroup(pattern) === 'edited';
       const linkedPersonas = state.personas.filter(persona => !persona.template && (persona.patternIds || []).includes(pattern.id));
       const queuedPersonas = state.personaUpdates.filter(update => update.status === 'pending' && update.patternIds.includes(pattern.id)).map(update => state.personas.find(persona => persona.id === update.personaId)).filter(Boolean);
-      const application = pattern.status === 'approved' ? `<div class="pattern-application ${linkedPersonas.length ? 'applied' : 'not-applied'}">${queuedPersonas.length ? `Queued for review: ${esc(queuedPersonas.map(persona => persona.name).join(', '))}` : linkedPersonas.length ? `Applied to: ${esc(linkedPersonas.map(persona => persona.name).join(', '))}` : 'Approved · Not yet assigned to a persona'}</div>` : '';
+      const application = pattern.status === 'approved' ? `<div class="pattern-application ${linkedPersonas.length ? 'applied' : 'not-applied'}">${queuedPersonas.length ? `Pattern added to: ${esc(queuedPersonas.map(persona => persona.name).join(', '))} · awaiting persona review` : linkedPersonas.length ? `Applied to: ${esc(linkedPersonas.map(persona => persona.name).join(', '))}` : 'Approved · Not yet assigned to a persona'}</div>` : '';
       const dimension = patternDimension(pattern);
-      return `<article class="pattern-card"><label class="pattern-select"><input type="checkbox" data-pattern-select="${pattern.id}"> Select</label><span class="status ${reviewGroup(pattern)}">${reviewGroup(pattern) === 'edited' ? 'edited' : pattern.status}</span><span class="dimension-chip">${esc(DIMENSION_LABELS[dimension] || dimension)}</span><div class="card-title pattern-full-title">${esc(patternDisplayTitle(pattern))}</div><p class="pattern-full-summary"><b>Pattern meaning:</b> ${esc(pattern.summary)}</p><div class="meta">${pattern.observationIds.length} observation${pattern.observationIds.length === 1 ? '' : 's'} · ${new Set(pattern.observationIds.map(id => obs(id)?.sourceId)).size} independent source(s)</div>${application}<details class="grouped-evidence"><summary>View supporting evidence</summary><div class="evidence-proof-list">${pattern.observationIds.map(id => { const observation = obs(id); const sourceRecord = observation && source(observation.sourceId); return observation ? `<button class="evidence-proof" data-source="${observation.sourceId}"><span class="evidence-proof-head"><b>${esc(DIMENSION_LABELS[observation.dimension] || observation.dimension)}</b><span class="dimension-chip">${esc(observation.evidenceType)}</span></span><p>${esc(observation.text)}</p><blockquote>“${esc(observation.excerpt)}”</blockquote><small>Source: ${esc(sourceRecord?.title || 'Missing source')}</small></button>` : ''; }).join('')}</div></details><div class="review-actions">${editable ? `<button class="tiny" data-review-pattern="${pattern.id}" data-result="approved">Approve</button><button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-review-pattern="${pattern.id}" data-result="rejected">Reject</button>` : pattern.status === 'approved' ? `<button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-pattern-persona="${pattern.id}" ${queuedPersonas.length ? 'disabled' : ''}>${queuedPersonas.length ? 'Added to persona update queue' : 'Add pattern to persona'}</button>` : ''}${pattern.observationIds.length > 1 ? `<button class="tiny" data-split-pattern="${pattern.id}">Split pattern</button>` : ''}</div></article>`;
+      return `<article class="pattern-card"><label class="pattern-select"><input type="checkbox" data-pattern-select="${pattern.id}"> Select</label><span class="status ${reviewGroup(pattern)}">${reviewGroup(pattern) === 'edited' ? 'edited' : pattern.status}</span><span class="dimension-chip">${esc(DIMENSION_LABELS[dimension] || dimension)}</span><div class="card-title pattern-full-title">${esc(patternDisplayTitle(pattern))}</div><p class="pattern-full-summary"><b>Pattern meaning:</b> ${esc(pattern.summary)}</p><div class="meta">${pattern.observationIds.length} observation${pattern.observationIds.length === 1 ? '' : 's'} · ${new Set(pattern.observationIds.map(id => obs(id)?.sourceId)).size} independent source(s)</div>${application}<details class="grouped-evidence"><summary>View supporting evidence</summary><div class="evidence-proof-list">${pattern.observationIds.map(id => { const observation = obs(id); const sourceRecord = observation && source(observation.sourceId); return observation ? `<button class="evidence-proof" data-source="${observation.sourceId}"><span class="evidence-proof-head"><b>${esc(DIMENSION_LABELS[observation.dimension] || observation.dimension)}</b><span class="dimension-chip">${esc(observation.evidenceType)}</span></span><p>${esc(observation.text)}</p><blockquote>“${esc(observation.excerpt)}”</blockquote><small>Source: ${esc(sourceRecord?.title || 'Missing source')}</small></button>` : ''; }).join('')}</div></details><div class="review-actions">${editable ? `<button class="tiny" data-review-pattern="${pattern.id}" data-result="approved">Approve</button><button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-review-pattern="${pattern.id}" data-result="rejected">Reject</button>` : pattern.status === 'approved' ? `<button class="tiny" data-edit-pattern="${pattern.id}">Edit pattern</button>${queuedPersonas.length ? `<button class="tiny" data-edit-pattern-assignment="${pattern.id}">Edit assignment</button>` : `<button class="tiny" data-pattern-persona="${pattern.id}">Add pattern to persona</button>`}` : ''}${pattern.observationIds.length > 1 ? `<button class="tiny" data-split-pattern="${pattern.id}">Split pattern</button>` : ''}</div></article>`;
     }, 'No patterns in this review state.', patternDimension);
     bindDynamic();
   };
@@ -706,6 +729,7 @@
     $$('[data-assign-proposal]').forEach(button => button.onclick = () => assignProposalToPersona(button.dataset.assignProposal));
     $$('[data-edit-gap]').forEach(button => button.onclick = () => editGap(button.dataset.editGap));
     $$('[data-review-persona-update]').forEach(button => button.onclick = () => reviewPersonaUpdate(button.dataset.reviewPersonaUpdate));
+    $$('[data-edit-pattern-assignment]').forEach(button => button.onclick = () => editPatternAssignment(button.dataset.editPatternAssignment));
   };
 
   $('#researchForm').onsubmit = saveResearch;
