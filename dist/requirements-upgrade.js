@@ -392,7 +392,7 @@
       return `<button class="relationship-route ${kind}" data-gap-focus="${gap.id}"><span class="relationship-node"><span class="relationship-node-icon">◎</span><span><b>${esc(nodes[0].name)}</b><small>${esc(nodes[0].role)}</small></span></span><span class="relationship-connector"><span class="relationship-caption"><b>${esc(stateLabel)}</b><small>${esc(gap.title || 'Not enough information')}</small></span><span class="relationship-line"><i></i><em>${marker}</em><i></i></span></span><span class="relationship-destinations">${destination.map(persona => `<span class="relationship-node"><span class="relationship-node-icon">◎</span><span><b>${esc(persona.name)}</b><small>${esc(persona.role)}</small></span></span>`).join('')}</span></button>`;
     }).join('');
     const updateNotice = unmappedPatterns.length ? `<div class="map-update-notice"><span class="map-update-icon">+</span><span><b>New evidence available</b><small>${unmappedPatterns.length} approved pattern${unmappedPatterns.length===1?' is':'s are'} not yet represented in this diagram. Review the evidence and confirm a relationship before the map changes.</small></span><button class="secondary" type="button" data-map-update>Update map</button></div>` : '';
-    $('#gapMap').innerHTML = `<section class="relationship-map"><div class="relationship-map-head"><div><span class="eyebrow">PERSONA RELATIONSHIP FLOW</span><h2>How information and behaviour connect</h2><p>Choose a flow type, then follow its arrows between personas. Select any route to inspect the supporting evidence.</p><button class="secondary mobile-flow-toggle" type="button" data-flow-toggle aria-expanded="false">Show flow diagram</button></div></div>${updateNotice}<div class="relationship-map-controls"><button class="flow-overview active" data-flow-filter="all"><b>Overview</b><small>Show every relationship type</small></button><div class="relationship-filter-group"><span>Filter diagram</span><div class="relationship-legend" role="group" aria-label="Filter relationship flow"><button class="connection" data-flow-filter="connection">Connections</button><button class="information-gap" data-flow-filter="information-gap">Information gaps</button><button class="behaviour-gap" data-flow-filter="behaviour-gap">Behavioural gaps</button></div></div></div><div class="relationship-flow-canvas">${routes||`<div class="relationship-empty"><b>No relationships mapped yet</b><p>Add a connection or gap to draw the first flow between personas.</p></div>`}<div class="relationship-filter-empty" hidden><b>No arrows of this type yet</b><span>Create a relationship card or choose another flow type.</span></div></div></section>`;
+    $('#gapMap').innerHTML = `<section class="relationship-map"><div class="relationship-map-head"><div><span class="eyebrow">PERSONA RELATIONSHIP FLOW</span><h2>How information and behaviour connect</h2><p>Choose one or more flow types, then follow their arrows between personas. Select any route to inspect the supporting evidence.</p><button class="secondary mobile-flow-toggle" type="button" data-flow-toggle aria-expanded="false">Show flow diagram</button></div></div>${updateNotice}<div class="relationship-map-controls"><button class="flow-overview active" data-flow-filter="all"><b>Overview</b><small>Show every relationship type</small></button><div class="relationship-filter-group"><span>Select one or more</span><div class="relationship-legend" role="group" aria-label="Filter relationship flow"><button class="connection" data-flow-filter="connection" aria-pressed="false">Connections</button><button class="information-gap" data-flow-filter="information-gap" aria-pressed="false">Information gaps</button><button class="behaviour-gap" data-flow-filter="behaviour-gap" aria-pressed="false">Behavioural gaps</button></div></div></div><div class="relationship-flow-canvas">${routes||`<div class="relationship-empty"><b>No relationships mapped yet</b><p>Add a connection or gap to draw the first flow between personas.</p></div>`}<div class="relationship-filter-empty" hidden><b>No arrows of this type yet</b><span>Create a relationship card or choose another flow type.</span></div></div></section>`;
     const mapUpdate = $('[data-map-update]');
     if (mapUpdate) mapUpdate.onclick = () => openGap();
     const flowToggle = $('[data-flow-toggle]');
@@ -402,12 +402,23 @@
       flowToggle.setAttribute('aria-expanded', String(expanded));
       flowToggle.textContent = expanded ? 'Hide flow diagram' : 'Show flow diagram';
     };
+    const activeFlowFilters = new Set();
     $$('[data-flow-filter]').forEach(filter => filter.onclick = () => {
       const selected = filter.dataset.flowFilter;
-      $$('[data-flow-filter]').forEach(item => item.classList.toggle('active', item === filter));
+      const overview = $('[data-flow-filter="all"]');
+      if (selected === 'all') {
+        activeFlowFilters.clear();
+        overview.classList.add('active');
+        $$('.relationship-legend [data-flow-filter]').forEach(item => { item.classList.remove('active'); item.setAttribute('aria-pressed', 'false'); });
+      } else {
+        if (activeFlowFilters.has(selected)) activeFlowFilters.delete(selected); else activeFlowFilters.add(selected);
+        filter.classList.toggle('active', activeFlowFilters.has(selected));
+        filter.setAttribute('aria-pressed', String(activeFlowFilters.has(selected)));
+        overview.classList.toggle('active', activeFlowFilters.size === 0);
+      }
       let shown = 0;
       $$('.relationship-route').forEach(route => {
-        const visibleForFilter = selected === 'all' || route.classList.contains(selected);
+        const visibleForFilter = activeFlowFilters.size === 0 || [...activeFlowFilters].some(type => route.classList.contains(type));
         route.hidden = !visibleForFilter;
         if (visibleForFilter) shown += 1;
       });
