@@ -343,6 +343,7 @@
       ['Supporting patterns', persona => (persona.patternIds || []).map(patternId => state.patterns.find(pattern => pattern.id === patternId)?.title).filter(Boolean).join(' · ') || 'No linked evidence'],
     ];
     $('#comparisonPanel').innerHTML = `<section class="comparison"><div class="section-label"><h2>Persona comparison</h2><span>${list.length} selected</span></div><div class="compare-table" style="grid-template-columns:150px repeat(${list.length},minmax(190px,1fr))"><b>Attribute</b>${list.map(persona => `<b>${esc(persona.name)}</b>`).join('')}${rows.map(([label, getter]) => `<span>${label}</span>${list.map(persona => `<div>${esc(getter(persona) || 'Insufficient evidence')}</div>`).join('')}`).join('')}</div></section>`;
+    $('#comparisonPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   proposals = function () {
@@ -909,6 +910,11 @@
   $('#quickAdd').onclick = () => openResearch();
   $('#newPersonaBtn').onclick = () => openPersonaForm();
   $('#compareBtn').onclick = comparePersonas;
+  $('#clearPersonaSelectionBtn').onclick = () => {
+    $$('#personaGrid [data-compare]').forEach(box => { box.checked = false; });
+    $('#comparisonPanel').innerHTML = '';
+    updatePersonaSelection();
+  };
   $('#reanalyseBtn').onclick = () => {
     if (!state.research.length) return toast('Add research before starting a new analysis run');
     $('#confirmReanalysis').checked = false;
