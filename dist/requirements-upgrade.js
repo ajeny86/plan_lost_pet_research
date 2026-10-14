@@ -390,6 +390,30 @@
     const persona = pid ? state.personas.find(item => item.id === pid) : null;
     const selected = new Set(persona?.patternIds || (pattern ? [pattern.id] : []));
     $('#personaEvidencePatterns').innerHTML = state.patterns.filter(item => item.status === 'approved').map(item => `<option value="${item.id}" ${selected.has(item.id) ? 'selected' : ''}>${esc(item.title)}</option>`).join('');
+    if (pattern && !pid) {
+      const evidence = (pattern.observationIds || []).map(observationId => obs(observationId)).filter(Boolean);
+      const unique = values => [...new Set(values.map(item => item?.trim()).filter(Boolean))];
+      const byDimension = dimensions => unique(evidence.filter(item => dimensions.includes(item.dimension)).map(item => item.text));
+      const roles = unique(evidence.map(item => source(item.sourceId)?.participantRole).filter(role => role && role !== 'Unknown' && role !== MISSING_SOURCE_VALUE));
+      const goals = byDimension(['Goal']);
+      const behaviours = byDimension(['Action', 'Decision-making', 'Interaction', 'Level of involvement']);
+      const motivations = byDimension(['Motivation']);
+      const constraints = byDimension(['Constraint']);
+      const painPoints = byDimension(['Problem']);
+      const needs = byDimension(['Need']);
+      $('#personaDialogTitle').textContent = 'Review evidence-based persona draft';
+      $('#personaName').value = pattern.title;
+      $('#personaRole').value = roles.join(' / ');
+      $('#personaGoal').value = goals.join('\n') || pattern.summary;
+      $('#personaBehaviours').value = behaviours.join('\n');
+      $('#personaMotivations').value = motivations.join('\n');
+      $('#personaConstraints').value = constraints.join('\n');
+      $('#personaPainPoints').value = painPoints.join('\n');
+      $('#personaNeeds').value = needs.join('\n');
+      $('#personaStatus').value = 'Unvalidated';
+      $('#personaReason').value = `Draft generated from approved pattern: ${pattern.title}`;
+      $('#personaHistory').innerHTML = `<div class="notice ok"><b>Draft prefilled from reviewed evidence.</b><br>${evidence.length} source-linked observation${evidence.length === 1 ? '' : 's'} mapped into the relevant persona sections. Review the wording, then save. Empty sections mean this pattern contains no approved evidence for that category.</div>`;
+    }
   };
 
   savePersona = function (event) {
