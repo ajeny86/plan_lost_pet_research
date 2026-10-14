@@ -50,6 +50,8 @@ Integrity rules:
 - Keep unknown information unknown.
 - Label an inference as Interpretation. Use Direct observation only for explicitly reported actions or statements.
 - A behavioural pattern requires at least two observations from at least two independent source IDs. Do not mistake many quotations from one source for independent cases.
+- Group observations by underlying meaning, not literal wording, animal species or channel name. For example, "find my cat" and "find my dog" may support one broader goal pattern such as "recover the missing pet" when their intent is equivalent.
+- Prefer a smaller set of coherent cross-source patterns over many narrow restatements. Do not return a pattern that merely repeats one observation.
 - Preserve contradictions. Do not force inconsistent observations into one pattern.
 
 Classification framework (apply strictly):

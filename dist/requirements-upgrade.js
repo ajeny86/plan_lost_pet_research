@@ -10,6 +10,10 @@
   state.personaUpdates ??= [];
   let templatePendingDeletion = null;
 
+  // Approved observations remain evidence observations. Only the AI analysis
+  // creates cross-source patterns; approval must never create a one-item pattern.
+  groupApprovedObservations = function () {};
+
   const researchDialogBody = $('#researchForm .dialog-body');
   $('#sourceUrl').closest('label').insertAdjacentHTML('afterend', `
     <section class="source-metadata-fields" aria-label="Case metadata">
@@ -587,12 +591,40 @@
     return item.reviewState === 'edited' ? 'edited' : item.status === 'approved' ? 'approved' : item.status === 'rejected' ? 'rejected' : 'pending';
   }
 
-  function groupedReviewMarkup(items, card, emptyText) {
+  const DIMENSION_ORDER = ['Goal', 'Action', 'Motivation', 'Constraint', 'Problem', 'Need', 'Decision-making', 'Level of involvement', 'Interaction', 'Mixed evidence', 'Unknown'];
+  const DIMENSION_LABELS = { Goal: 'Main goals', Action: 'Actions', Motivation: 'Motivations', Constraint: 'Constraints', Problem: 'Pain points', Need: 'Needs', 'Decision-making': 'Decision-making', 'Level of involvement': 'Level of involvement', Interaction: 'Interactions', 'Mixed evidence': 'Mixed evidence', Unknown: 'Unclassified' };
+
+  function patternDimension(pattern) {
+    const counts = new Map();
+    (pattern.observationIds || []).map(observationId => obs(observationId)?.dimension || 'Unknown').forEach(dimension => counts.set(dimension, (counts.get(dimension) || 0) + 1));
+    const ranked = [...counts].sort((a, b) => b[1] - a[1] || DIMENSION_ORDER.indexOf(a[0]) - DIMENSION_ORDER.indexOf(b[0]));
+    if (ranked.length > 1 && ranked[0][1] === ranked[1][1]) return 'Mixed evidence';
+    return ranked[0]?.[0] || 'Unknown';
+  }
+
+  function dimensionGroupedCards(items, card, dimensionOf) {
+    const groups = new Map();
+    items.forEach(item => { const dimension = dimensionOf(item) || 'Unknown'; if (!groups.has(dimension)) groups.set(dimension, []); groups.get(dimension).push(item); });
+    return [...groups.entries()].sort((a, b) => DIMENSION_ORDER.indexOf(a[0]) - DIMENSION_ORDER.indexOf(b[0])).map(([dimension, group]) => `<section class="dimension-group"><div class="dimension-heading"><b>${esc(DIMENSION_LABELS[dimension] || dimension)}</b><span>${group.length}</span></div><div class="dimension-group-cards">${group.map(card).join('')}</div></section>`).join('');
+  }
+
+  function groupedReviewMarkup(items, card, emptyText, dimensionOf = null) {
     return REVIEW_GROUPS.map(([key, label]) => {
       const group = items.filter(item => reviewGroup(item) === key);
-      return `<details class="review-group review-group-${key}" ${key === 'rejected' ? '' : 'open'}><summary><span>${label}</span><b>${group.length}</b></summary><div class="review-group-list">${group.length ? group.map(card).join('') : `<p class="review-group-empty">${esc(emptyText)}</p>`}</div></details>`;
+      const content = group.length ? dimensionOf ? dimensionGroupedCards(group, card, dimensionOf) : group.map(card).join('') : `<p class="review-group-empty">${esc(emptyText)}</p>`;
+      return `<details class="review-group review-group-${key}" ${key === 'rejected' ? '' : 'open'}><summary><span>${label}</span><b>${group.length}</b></summary><div class="review-group-list">${content}</div></details>`;
     }).join('');
   }
+
+  editObservation = function (observationId) {
+    const observation = obs(observationId);
+    if (!observation) return;
+    $('#editObservationId').value = observation.id;
+    $('#editObservationDimension').value = observation.dimension;
+    $('#editObservationText').value = observation.text;
+    $('#editObservationExcerpt').value = observation.excerpt;
+    show('#editObservationDialog');
+  };
 
   analysis = function () {
     const observations = state.observations.slice().sort((a, b) => b.created.localeCompare(a.created));
@@ -608,14 +640,15 @@
       const sourceRecord = source(observation.sourceId);
       const editable = reviewGroup(observation) === 'pending' || reviewGroup(observation) === 'edited';
       return `<article class="observation-card"><span class="status ${reviewGroup(observation)}">${reviewGroup(observation) === 'edited' ? 'edited' : observation.status}</span><div class="card-title">${esc(observation.dimension)}</div><p>${esc(observation.text)}</p><div class="excerpt">“${esc(observation.excerpt)}”</div><div class="meta">${esc(observation.evidenceType)} · Source: ${esc(sourceRecord?.title || 'Missing source')}</div><div class="review-actions">${editable ? `<button class="tiny" data-review-observation="${observation.id}" data-result="approved">Approve</button><button class="tiny" data-edit-observation="${observation.id}">Edit</button><button class="tiny" data-review-observation="${observation.id}" data-result="rejected">Reject</button>` : observation.status === 'approved' ? `<button class="tiny" data-edit-observation="${observation.id}">Edit</button>` : ''}<button class="tiny" data-source="${observation.sourceId}">Open source</button></div></article>`;
-    }, 'No observations in this review state.');
+    }, 'No observations in this review state.', observation => observation.dimension);
     $('#patternList').innerHTML = groupedReviewMarkup(patterns, pattern => {
       const editable = reviewGroup(pattern) === 'pending' || reviewGroup(pattern) === 'edited';
       const linkedPersonas = state.personas.filter(persona => !persona.template && (persona.patternIds || []).includes(pattern.id));
       const queuedPersonas = state.personaUpdates.filter(update => update.status === 'pending' && update.patternIds.includes(pattern.id)).map(update => state.personas.find(persona => persona.id === update.personaId)).filter(Boolean);
       const application = pattern.status === 'approved' ? `<div class="pattern-application ${linkedPersonas.length ? 'applied' : 'not-applied'}">${queuedPersonas.length ? `Queued for review: ${esc(queuedPersonas.map(persona => persona.name).join(', '))}` : linkedPersonas.length ? `Applied to: ${esc(linkedPersonas.map(persona => persona.name).join(', '))}` : 'Approved · Not yet assigned to a persona'}</div>` : '';
-      return `<article class="pattern-card"><label class="pattern-select"><input type="checkbox" data-pattern-select="${pattern.id}"> Select</label><span class="status ${reviewGroup(pattern)}">${reviewGroup(pattern) === 'edited' ? 'edited' : pattern.status}</span><div class="card-title">${esc(pattern.title)}</div><p>${esc(pattern.summary)}</p><div class="meta">${pattern.observationIds.length} observation${pattern.observationIds.length === 1 ? '' : 's'} · ${new Set(pattern.observationIds.map(id => obs(id)?.sourceId)).size} independent source(s)</div>${application}<details class="grouped-evidence"><summary>View supporting evidence</summary><div class="evidence-links">${pattern.observationIds.map(id => { const observation = obs(id); return observation ? `<button data-source="${observation.sourceId}">${esc(observation.excerpt)}</button>` : ''; }).join('')}</div></details><div class="review-actions">${editable ? `<button class="tiny" data-review-pattern="${pattern.id}" data-result="approved">Approve</button><button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-review-pattern="${pattern.id}" data-result="rejected">Reject</button>` : pattern.status === 'approved' ? `<button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-pattern-persona="${pattern.id}" ${queuedPersonas.length ? 'disabled' : ''}>${queuedPersonas.length ? 'Added to persona update queue' : 'Add pattern to persona'}</button>` : ''}${pattern.observationIds.length > 1 ? `<button class="tiny" data-split-pattern="${pattern.id}">Split pattern</button>` : ''}</div></article>`;
-    }, 'No patterns in this review state.');
+      const dimension = patternDimension(pattern);
+      return `<article class="pattern-card"><label class="pattern-select"><input type="checkbox" data-pattern-select="${pattern.id}"> Select</label><span class="status ${reviewGroup(pattern)}">${reviewGroup(pattern) === 'edited' ? 'edited' : pattern.status}</span><span class="dimension-chip">${esc(DIMENSION_LABELS[dimension] || dimension)}</span><div class="card-title">${esc(pattern.title)}</div><p>${esc(pattern.summary)}</p><div class="meta">${pattern.observationIds.length} observation${pattern.observationIds.length === 1 ? '' : 's'} · ${new Set(pattern.observationIds.map(id => obs(id)?.sourceId)).size} independent source(s)</div>${application}<details class="grouped-evidence"><summary>View supporting evidence</summary><div class="evidence-proof-list">${pattern.observationIds.map(id => { const observation = obs(id); const sourceRecord = observation && source(observation.sourceId); return observation ? `<button class="evidence-proof" data-source="${observation.sourceId}"><span class="evidence-proof-head"><b>${esc(DIMENSION_LABELS[observation.dimension] || observation.dimension)}</b><span class="dimension-chip">${esc(observation.evidenceType)}</span></span><p>${esc(observation.text)}</p><blockquote>“${esc(observation.excerpt)}”</blockquote><small>Source: ${esc(sourceRecord?.title || 'Missing source')}</small></button>` : ''; }).join('')}</div></details><div class="review-actions">${editable ? `<button class="tiny" data-review-pattern="${pattern.id}" data-result="approved">Approve</button><button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-review-pattern="${pattern.id}" data-result="rejected">Reject</button>` : pattern.status === 'approved' ? `<button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-pattern-persona="${pattern.id}" ${queuedPersonas.length ? 'disabled' : ''}>${queuedPersonas.length ? 'Added to persona update queue' : 'Add pattern to persona'}</button>` : ''}${pattern.observationIds.length > 1 ? `<button class="tiny" data-split-pattern="${pattern.id}">Split pattern</button>` : ''}</div></article>`;
+    }, 'No patterns in this review state.', patternDimension);
     bindDynamic();
   };
 
@@ -672,6 +705,23 @@
   $('#sourceImage').onchange = event => { $('#sourceImageName').textContent = event.target.files[0]?.name || 'No file selected'; };
   $('#personaForm').onsubmit = savePersona;
   $('#observationForm').onsubmit = saveObservation;
+  $('#editObservationForm').onsubmit = event => {
+    event.preventDefault();
+    const observation = obs($('#editObservationId').value);
+    if (!observation) return toast('Observation could not be found');
+    const text = $('#editObservationText').value.trim();
+    if (!text) return toast('Add an evidence-based observation');
+    const previousDimension = observation.dimension;
+    observation.dimension = $('#editObservationDimension').value;
+    observation.text = text;
+    observation.status = 'pending';
+    observation.reviewState = 'edited';
+    observation.updated = now();
+    observation.editHistory ??= [];
+    observation.editHistory.unshift({ at: now(), previousDimension, newDimension: observation.dimension });
+    log(`Reclassified observation from ${previousDimension} to ${observation.dimension}`);
+    save(); closeDialogs(); render(); go('analysis'); toast('Observation updated and moved to re-review');
+  };
   $('#solutionForm').onsubmit = saveSolution;
   $('#addResearchBtn').onclick = () => openResearch();
   $('#quickAdd').onclick = () => openResearch();
