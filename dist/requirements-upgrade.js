@@ -1,5 +1,6 @@
 /* Requirements upgrade: structured source metadata, fuller provenance and persona version control. */
 (() => {
+  const MISSING_SOURCE_VALUE = 'Not found in source — please verify';
   const originalBindDynamic = bindDynamic;
   const originalOpenPersonaDetails = openPersonaDetails;
   const originalOpenPersonaForm = openPersonaForm;
@@ -90,9 +91,38 @@
     };
   }
 
+  function isMissingValue(value) {
+    return !value || value === 'Unknown' || value === MISSING_SOURCE_VALUE;
+  }
+
+  async function extractMetadataFromSource(record) {
+    const endpoint = String(state.settings.endpoint || PUBLIC_AI_ENDPOINT).replace(/\/api\/analyze\/?$/, '/api/extract-metadata');
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: { id: record.participantId, type: record.type, content: record.content } }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Metadata extraction returned ${response.status}`);
+    const fields = data.metadata || {};
+    const allowed = {
+      participantRole: ['Owner', 'Finder', 'Spotter', 'Volunteer', 'Other'],
+      reportStatus: ['Lost', 'Found', 'Sighted'],
+      involvement: ['Quick', 'Active', 'Temporary Care'],
+    };
+    const result = { metadataEvidence: {} };
+    for (const key of ['participantRole', 'reportStatus', 'involvement', 'animalType', 'location', 'incidentDate', 'publicationDate', 'outcome', 'updates']) {
+      let extracted = fields[key]?.value;
+      if (allowed[key] && !allowed[key].includes(extracted)) extracted = null;
+      result[key] = extracted || MISSING_SOURCE_VALUE;
+      if (extracted && fields[key]?.excerpt) result.metadataEvidence[key] = fields[key].excerpt;
+    }
+    return result;
+  }
+
   function fillMetadata(record = {}) {
-    $('#reportStatus').value = record.reportStatus || 'Unknown';
-    $('#involvement').value = record.involvement || 'Unknown';
+    $('#reportStatus').value = record.reportStatus === MISSING_SOURCE_VALUE ? 'Unknown' : record.reportStatus || 'Unknown';
+    $('#involvement').value = record.involvement === MISSING_SOURCE_VALUE ? 'Unknown' : record.involvement || 'Unknown';
     $('#animalType').value = record.animalType === 'Unknown' ? '' : record.animalType || '';
     $('#sourceLocation').value = record.location === 'Unknown' ? '' : record.location || '';
     $('#incidentDate').value = record.incidentDate === 'Unknown' ? '' : record.incidentDate || '';
@@ -143,7 +173,7 @@
     if (image) imageData = await fileToData(image);
     if (!content && !file) return researchFormError('Add pasted content or upload a TXT, CSV or PDF file.', $('#sourceContent'));
     const redacted = redactPersonalData(content);
-    const record = {
+    let record = {
       type: $('#sourceType').value,
       title: $('#sourceTitle').value.trim(),
       date: value('sourceDate'),
@@ -159,6 +189,24 @@
       processed: false,
       surveySummary: $('#sourceType').value === 'Survey' && (file?.type === 'text/csv' || file?.name?.endsWith('.csv')) ? parseCsvSummary(redacted) : null,
     };
+    const missingFields = ['participantRole', 'reportStatus', 'involvement', 'animalType', 'location', 'incidentDate', 'publicationDate', 'outcome', 'updates'].filter(key => isMissingValue(record[key]));
+    if (missingFields.length && redacted) {
+      const saveButton = $('#saveResearchBtn');
+      saveButton.disabled = true;
+      saveButton.textContent = 'Reading source…';
+      try {
+        const extracted = await extractMetadataFromSource(record);
+        record.metadataEvidence = extracted.metadataEvidence;
+        for (const key of missingFields) record[key] = extracted[key];
+        record.metadataExtraction = { status: 'complete', at: now(), method: 'AI source extraction' };
+      } catch (error) {
+        for (const key of missingFields) record[key] = MISSING_SOURCE_VALUE;
+        record.metadataExtraction = { status: 'unavailable', at: now(), error: error.message };
+      } finally {
+        saveButton.disabled = false;
+        saveButton.textContent = 'Save source';
+      }
+    }
     const normalizedUrl = record.url.replace(/\/$/, '').toLowerCase();
     const normalizedContent = redacted.replace(/\s+/g, ' ').trim().toLowerCase();
     const possibleDuplicate = state.research.find(item => {
@@ -215,21 +263,41 @@
     const metadata = [
       ['Report', record.reportStatus], ['Involvement', record.involvement], ['Animal', record.animalType],
       ['Location', record.location], ['Incident', record.incidentDate], ['Published', record.publicationDate], ['Outcome', record.outcome],
-    ].filter(([, val]) => val && val !== 'Unknown');
+    ].map(([key, val]) => [key, val && val !== 'Unknown' ? val : MISSING_SOURCE_VALUE]);
     $('#sourceDialogTitle').textContent = record.title;
     $('#sourceDialogBody').innerHTML = `<div>
       <span class="status ${record.processed ? 'approved' : 'pending'}">${record.processed ? 'Analysed' : 'Not analysed'}</span>
       <p class="meta">${esc(record.type)} · ${esc(record.participantId)} · role ${esc(record.participantRole)} · ${esc(record.date)}</p>
-      ${metadata.length ? `<dl class="source-metadata-list">${metadata.map(([key, val]) => `<div><dt>${esc(key)}</dt><dd>${esc(val)}</dd></div>`).join('')}</dl>` : ''}
+      <dl class="source-metadata-list">${metadata.map(([key, val]) => `<div class="${val === MISSING_SOURCE_VALUE ? 'metadata-missing' : ''}"><dt>${esc(key)}</dt><dd>${esc(val)}</dd>${record.metadataEvidence?.[({Report:'reportStatus',Involvement:'involvement',Animal:'animalType',Location:'location',Incident:'incidentDate',Published:'publicationDate',Outcome:'outcome'})[key]] ? `<small title="Exact source excerpt">Source-backed</small>` : ''}</div>`).join('')}</dl>
+      ${record.metadataExtraction?.status === 'unavailable' ? '<div class="notice neutral">Automatic metadata extraction was unavailable when this source was saved. Missing fields are marked for verification.</div>' : ''}
       ${record.surveySummary ? `<div class="notice neutral"><b>${record.surveySummary.responseCount} imported survey response(s)</b><br>Columns: ${esc(record.surveySummary.columns.join(', '))}<br>${esc(record.surveySummary.note)}</div>` : ''}
       ${record.url ? `<p><a href="${esc(record.url)}" target="_blank" rel="noreferrer">Open original webpage ↗</a></p>` : ''}
       ${record.imageData ? `<img class="source-attachment-image" src="${record.imageData}" alt="Imported source attachment">` : ''}
       <div class="source-original">${esc(record.content || 'No text preview.')}</div>
-      ${record.updates && record.updates !== 'Unknown' ? `<section class="source-updates"><b>Comments and updates</b><p>${esc(record.updates)}</p></section>` : ''}
+      ${record.updates && record.updates !== 'Unknown' && record.updates !== MISSING_SOURCE_VALUE ? `<section class="source-updates"><b>Comments and updates</b><p>${esc(record.updates)}</p></section>` : ''}
       ${record.fileName ? `<p class="meta">Attachment: ${esc(record.fileName)}</p>` : ''}
       ${record.previousContents?.length ? `<details class="source-revisions"><summary>Previous source revisions (${record.previousContents.length})</summary>${record.previousContents.map(item => `<div><b>${day(item.at)}</b><pre>${esc(item.content)}</pre></div>`).join('')}</details>` : ''}
     </div>`;
     show('#sourceDialog');
+    const fieldsToComplete = ['participantRole', 'reportStatus', 'involvement', 'animalType', 'location', 'incidentDate', 'publicationDate', 'outcome', 'updates'].filter(key => isMissingValue(record[key]));
+    if (fieldsToComplete.length && record.content && !record.metadataExtraction) {
+      const progress = document.createElement('div');
+      progress.className = 'notice neutral metadata-progress';
+      progress.textContent = 'Reading the source to complete missing metadata…';
+      $('#sourceDialogBody').prepend(progress);
+      extractMetadataFromSource(record).then(extracted => {
+        record.metadataEvidence = extracted.metadataEvidence;
+        for (const key of fieldsToComplete) record[key] = extracted[key];
+        record.metadataExtraction = { status: 'complete', at: now(), method: 'AI source extraction' };
+        save(); render(); openSource(sid);
+        toast('Missing metadata checked against the source');
+      }).catch(error => {
+        for (const key of fieldsToComplete) record[key] = MISSING_SOURCE_VALUE;
+        record.metadataExtraction = { status: 'unavailable', at: now(), error: error.message };
+        save(); render(); openSource(sid);
+        toast('Metadata could not be extracted; missing fields were marked for verification');
+      });
+    }
   };
 
   comparePersonas = function () {

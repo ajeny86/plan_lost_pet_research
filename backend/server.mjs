@@ -60,6 +60,22 @@ Research sources:
 ${JSON.stringify(body.sources)}`;
 }
 
+function metadataPromptFor(body) {
+  return `Extract case metadata only from the supplied research source.
+
+Integrity rules:
+- Never guess or add information that is not explicitly present in the source.
+- Use null when a field is not supported by the source.
+- Copy a short exact excerpt for every non-null value.
+- Dates must use YYYY-MM-DD only when the complete date is explicit; otherwise use null.
+- "location" may be a neighbourhood, street, district or city explicitly named in the source.
+- "involvement" describes the participant's actions, not their character.
+- Keep comments factual and concise.
+
+Source:
+${JSON.stringify(body.source)}`;
+}
+
 const analysisSchema = {
   type: 'object',
   additionalProperties: false,
@@ -98,6 +114,37 @@ const analysisSchema = {
   required: ['observations', 'patterns'],
 };
 
+const nullableString = { anyOf: [{ type: 'string' }, { type: 'null' }] };
+const nullableEnum = values => ({ anyOf: [{ type: 'string', enum: values }, { type: 'null' }] });
+const metadataFieldSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { value: nullableString, excerpt: nullableString },
+  required: ['value', 'excerpt'],
+};
+const metadataEnumFieldSchema = values => ({
+  type: 'object',
+  additionalProperties: false,
+  properties: { value: nullableEnum(values), excerpt: nullableString },
+  required: ['value', 'excerpt'],
+});
+const metadataSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    participantRole: metadataEnumFieldSchema(['Owner', 'Finder', 'Spotter', 'Volunteer', 'Other']),
+    reportStatus: metadataEnumFieldSchema(['Lost', 'Found', 'Sighted']),
+    involvement: metadataEnumFieldSchema(['Quick', 'Active', 'Temporary Care']),
+    animalType: metadataFieldSchema,
+    location: metadataFieldSchema,
+    incidentDate: metadataFieldSchema,
+    publicationDate: metadataFieldSchema,
+    outcome: metadataFieldSchema,
+    updates: metadataFieldSchema,
+  },
+  required: ['participantRole', 'reportStatus', 'involvement', 'animalType', 'location', 'incidentDate', 'publicationDate', 'outcome', 'updates'],
+};
+
 createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
@@ -109,7 +156,7 @@ createServer(async (req, res) => {
   }
 
   const pathname = new URL(req.url, 'http://localhost').pathname;
-  if (req.method !== 'POST' || !['/api/analyze', '/api/import-url'].includes(pathname)) {
+  if (req.method !== 'POST' || !['/api/analyze', '/api/import-url', '/api/extract-metadata'].includes(pathname)) {
     return reply(req, res, 404, { error: 'Not found' });
   }
 
@@ -156,6 +203,31 @@ createServer(async (req, res) => {
 
   try {
     const body = JSON.parse(raw);
+    if (pathname === '/api/extract-metadata') {
+      if (!body.source?.content) return reply(req, res, 400, { error: 'No source text supplied' });
+      const upstream = await fetch(`${base}/responses`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          input: metadataPromptFor(body),
+          text: { format: { type: 'json_schema', name: 'source_metadata', strict: true, schema: metadataSchema } },
+        }),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) return reply(req, res, 502, { error: data.error?.message || 'AI provider request failed' });
+      const outputText = data.output?.flatMap(item => item.content || []).find(item => item.type === 'output_text')?.text;
+      if (!outputText) return reply(req, res, 502, { error: 'AI provider returned no structured output' });
+      const parsed = JSON.parse(outputText);
+      const content = String(body.source.content);
+      for (const field of Object.values(parsed)) {
+        if (field.value !== null && (!field.excerpt || !content.includes(field.excerpt))) {
+          field.value = null;
+          field.excerpt = null;
+        }
+      }
+      return reply(req, res, 200, { metadata: parsed });
+    }
     if (!Array.isArray(body.sources) || !body.sources.length) return reply(req, res, 400, { error: 'No research sources supplied' });
     const upstream = await fetch(`${base}/responses`, {
       method: 'POST',
