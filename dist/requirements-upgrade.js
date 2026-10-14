@@ -5,6 +5,8 @@
   const originalOpenPersonaDetails = openPersonaDetails;
   const originalOpenPersonaForm = openPersonaForm;
 
+  state.analysisArchives ??= [];
+
   const researchDialogBody = $('#researchForm .dialog-body');
   $('#sourceUrl').closest('label').insertAdjacentHTML('afterend', `
     <section class="source-metadata-fields" aria-label="Case metadata">
@@ -467,11 +469,14 @@
   personaFromPattern = async function (patternId) {
     const pattern = state.patterns.find(item => item.id === patternId);
     if (!pattern) return;
-    const linked = state.personas.filter(persona => !persona.template && (persona.patternIds || []).includes(patternId));
-    if (!linked.length) return openPersonaForm(null, pattern);
-    if (linked.length === 1) return openPersonaForm(linked[0].id, pattern);
-    const answer = await requestText('Update persona from approved pattern', `Enter a number: ${linked.map((persona, index) => `${index + 1}. ${persona.name}`).join(' · ')}`, '1');
-    const persona = linked[Number(answer) - 1];
+    const exactLinked = state.personas.filter(persona => !persona.template && (persona.patternIds || []).includes(patternId));
+    const context = personaContextFromPattern(pattern);
+    const sameRole = context.role ? state.personas.filter(persona => !persona.template && persona.role === context.role) : [];
+    const candidates = exactLinked.length ? exactLinked : sameRole;
+    if (!candidates.length) return openPersonaForm(null, pattern);
+    if (candidates.length === 1) return openPersonaForm(candidates[0].id, pattern);
+    const answer = await requestText('Update persona from approved pattern', `Enter a number: ${candidates.map((persona, index) => `${index + 1}. ${persona.name}`).join(' · ')}`, '1');
+    const persona = candidates[Number(answer) - 1];
     if (persona) openPersonaForm(persona.id, pattern);
   };
 
@@ -531,6 +536,11 @@
     const patterns = state.patterns.slice().sort((a, b) => b.created.localeCompare(a.created));
     $('#observationCount').textContent = observations.length;
     $('#patternCount').textContent = patterns.length;
+    $('#analysisView .analysis-archive-note')?.remove();
+    if (state.analysisArchives.length) {
+      const latest = state.analysisArchives[0];
+      $('#aiConfigNotice').insertAdjacentHTML('afterend', `<div class="notice neutral analysis-archive-note"><b>${state.analysisArchives.length} previous analysis run${state.analysisArchives.length === 1 ? '' : 's'} archived.</b> Latest archive: ${day(latest.archivedAt)} · ${latest.observations.length} observations · ${latest.patterns.length} patterns. Original research was preserved.</div>`);
+    }
     $('#observationList').innerHTML = groupedReviewMarkup(observations, observation => {
       const sourceRecord = source(observation.sourceId);
       const editable = reviewGroup(observation) === 'pending' || reviewGroup(observation) === 'edited';
@@ -593,6 +603,42 @@
   $('#quickAdd').onclick = () => openResearch();
   $('#newPersonaBtn').onclick = () => openPersonaForm();
   $('#compareBtn').onclick = comparePersonas;
+  $('#reanalyseBtn').onclick = () => {
+    if (!state.research.length) return toast('Add research before starting a new analysis run');
+    $('#confirmReanalysis').checked = false;
+    show('#reanalyseDialog');
+  };
+  $('#reanalyseForm').onsubmit = async event => {
+    event.preventDefault();
+    if (!$('#confirmReanalysis').checked) return toast('Confirm that previous approvals will be archived');
+    const archivedAt = now();
+    state.analysisArchives.unshift({
+      id: id('run'), archivedAt,
+      observations: clone(state.observations), patterns: clone(state.patterns),
+      proposals: clone(state.proposals), gaps: clone(state.gaps),
+      personaEvidenceLinks: state.personas.filter(persona => !persona.template).map(persona => ({ personaId: persona.id, patternIds: clone(persona.patternIds || []) })),
+    });
+    for (const persona of state.personas.filter(item => !item.template)) {
+      persona.history ??= [];
+      persona.history.unshift({
+        version: persona.version,
+        values: { name: persona.name, role: persona.role, goal: persona.goal, status: persona.status, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], patternIds: persona.patternIds || [] },
+        reason: 'Evidence links archived before a complete reanalysis', changed: archivedAt, origin: 'analysis reset', evidencePatternIds: clone(persona.patternIds || []),
+      });
+      persona.patternIds = [];
+      persona.status = 'Unvalidated';
+      persona.updated = archivedAt;
+    }
+    state.observations = [];
+    state.patterns = [];
+    state.proposals = [];
+    state.gaps = [];
+    state.research.forEach(record => { record.processed = false; record.reanalysisRequestedAt = archivedAt; });
+    log(`Archived the previous analysis and queued ${state.research.length} source(s) for reanalysis`);
+    save(); closeDialogs(); render(); go('analysis');
+    toast('Previous analysis archived. Starting a new analysis run…');
+    await analyse();
+  };
   $('#exportBackupBtn').onclick = () => {
     const blob = new Blob([JSON.stringify({ exportedAt: now(), schemaVersion: 2, data: state }, null, 2)], { type: 'application/json' });
     const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `persona-builder-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(link.href);

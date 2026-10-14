@@ -52,6 +52,23 @@ Integrity rules:
 - A behavioural pattern requires at least two observations from at least two independent source IDs. Do not mistake many quotations from one source for independent cases.
 - Preserve contradictions. Do not force inconsistent observations into one pattern.
 
+Classification framework (apply strictly):
+- Goal: the participant's desired end result. A channel or action is never a goal. Example: "find my missing dog and bring him home", not "post on Facebook".
+- Action: an observable behaviour the participant performed. Examples: posted in a Facebook group, called a veterinary clinic, searched nearby streets.
+- Motivation: an explicitly stated reason or internal driver for acting. Do not infer a motive merely from an action.
+- Constraint: a circumstance that limits or prevents action, such as lack of time, transport, space, permission, access or service availability.
+- Problem: a pain point or experienced friction, confusion, uncertainty, repetition, delay or negative consequence.
+- Need: information, guidance, coordination or capability that the participant explicitly says would help them progress. Phrase it as the needed support, not as a product feature unless the participant requested that feature.
+- Decision-making: how the participant chose or prioritised an action, including stated influences and trade-offs.
+- Level of involvement: the extent of action taken, only when directly supported.
+- Interaction: a reported exchange with another person, organisation or platform.
+
+Boundary rules:
+- "Used Facebook" is Action or Interaction, never Goal or Motivation by itself.
+- "Did not know who to contact" is Problem; "needed a clear contact order" is Need.
+- "Could not keep the animal because the landlord prohibited pets" is Constraint.
+- One excerpt may support more than one observation only when each interpretation is distinct and directly supported.
+
 Return strict JSON with observations and patterns.
 Each observation needs a unique short key such as o1, sourceId, dimension, text, exact excerpt and evidenceType.
 Each pattern needs title, summary, observationKeys and counterEvidenceKeys. observationKeys must refer to returned observation keys. Return an empty patterns array if the evidence does not support a recurring pattern.
