@@ -8,11 +8,6 @@
 
   state.analysisArchives ??= [];
   state.personaUpdates ??= [];
-  state.personas.forEach(persona => {
-    persona.decisions ??= [];
-    persona.involvement ??= [];
-    persona.interactions ??= [];
-  });
   let templatePendingDeletion = null;
 
   // Approval may attach a new observation to an AI-matched existing pattern,
@@ -332,8 +327,7 @@
       ['Role', persona => persona.role], ['Main goal', persona => persona.goal],
       ['Behaviours', persona => (persona.behaviours || []).join(' · ')], ['Motivations', persona => (persona.motivations || []).join(' · ')],
       ['Constraints', persona => (persona.constraints || []).join(' · ')], ['Pain points', persona => (persona.painPoints || []).join(' · ')],
-      ['Needs', persona => (persona.needs || []).join(' · ')], ['Decision-making', persona => (persona.decisions || []).join(' · ')],
-      ['Level of involvement', persona => (persona.involvement || []).join(' · ')], ['Interactions', persona => (persona.interactions || []).join(' · ')],
+      ['Needs', persona => (persona.needs || []).join(' · ')],
       ['Validation', persona => persona.template ? 'Test template' : persona.status],
       ['Supporting patterns', persona => (persona.patternIds || []).map(patternId => state.patterns.find(pattern => pattern.id === patternId)?.title).filter(Boolean).join(' · ') || 'No linked evidence'],
     ];
@@ -361,7 +355,7 @@
     const previousPatternIds = [...(persona.patternIds || [])];
     persona.patternIds = [...new Set([...previousPatternIds, ...proposal.patternIds])];
     persona.history ??= [];
-    persona.history.unshift({ version: persona.version, values: { name: persona.name, role: persona.role, goal: persona.goal, status: persona.status, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], decisions: persona.decisions || [], involvement: persona.involvement || [], interactions: persona.interactions || [], patternIds: previousPatternIds }, reason: `Assigned evidence from proposal: ${proposal.title}`, changed: now(), origin: 'proposal review', evidencePatternIds: proposal.patternIds });
+    persona.history.unshift({ version: persona.version, values: { name: persona.name, role: persona.role, goal: persona.goal, status: persona.status, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], patternIds: previousPatternIds }, reason: `Assigned evidence from proposal: ${proposal.title}`, changed: now(), origin: 'proposal review', evidencePatternIds: proposal.patternIds });
     persona.version += 1; proposal.status = 'assigned';
     log(`Assigned proposal evidence to ${persona.name}`); save(); render(); toast('Evidence assigned to the existing persona');
   }
@@ -443,9 +437,6 @@
     delete $('#personaForm').dataset.updateId;
     originalOpenPersonaForm(pid, pattern);
     const persona = pid ? state.personas.find(item => item.id === pid) : null;
-    $('#personaDecisions').value = (persona?.decisions || []).join('\n');
-    $('#personaInvolvement').value = (persona?.involvement || []).join('\n');
-    $('#personaInteractions').value = (persona?.interactions || []).join('\n');
     const selected = new Set([...(persona?.patternIds || []), ...(pattern ? [pattern.id] : [])]);
     $('#personaEvidencePatterns').innerHTML = state.patterns.filter(item => item.status === 'approved').map(item => `<option value="${item.id}" ${selected.has(item.id) ? 'selected' : ''}>${esc(item.title)}</option>`).join('');
     if (pattern && !pid) {
@@ -453,14 +444,11 @@
       const evidence = context.evidence;
       const unique = values => [...new Set(values.map(item => item?.trim()).filter(Boolean))];
       const byDimension = dimensions => unique(evidence.filter(item => dimensions.includes(item.dimension)).map(item => item.text));
-      const behaviours = byDimension(['Action']);
+      const behaviours = byDimension(['Action', 'Decision-making', 'Level of involvement', 'Interaction']);
       const motivations = byDimension(['Motivation']);
       const constraints = byDimension(['Constraint']);
       const painPoints = byDimension(['Problem']);
       const needs = byDimension(['Need']);
-      const decisions = byDimension(['Decision-making']);
-      const involvement = byDimension(['Level of involvement']);
-      const interactions = byDimension(['Interaction']);
       $('#personaDialogTitle').textContent = 'Review evidence-based persona draft';
       $('#personaName').value = context.name;
       $('#personaRole').value = context.role;
@@ -470,9 +458,6 @@
       $('#personaConstraints').value = constraints.join('\n');
       $('#personaPainPoints').value = painPoints.join('\n');
       $('#personaNeeds').value = needs.join('\n');
-      $('#personaDecisions').value = decisions.join('\n');
-      $('#personaInvolvement').value = involvement.join('\n');
-      $('#personaInteractions').value = interactions.join('\n');
       $('#personaStatus').value = 'Unvalidated';
       $('#personaReason').value = `Draft generated from approved pattern: ${pattern.title}`;
       $('#personaHistory').innerHTML = `<div class="notice ok"><b>Draft prefilled from reviewed evidence.</b><br>${evidence.length} source-linked observation${evidence.length === 1 ? '' : 's'} mapped into the relevant persona sections.${context.goalDerivedFromContext ? ' The main goal is a reviewable interpretation derived from the explicit participant role and lost/found situation.' : ''} Review the wording, then save. Empty sections mean this pattern contains no approved evidence for that category.</div>`;
@@ -489,14 +474,11 @@
       if ((!$('#personaRole').value.trim() || $('#personaRole').value === 'Unknown') && context.role) $('#personaRole').value = context.role;
       if ($('#personaName').value === pattern.title && context.name !== pattern.title) $('#personaName').value = context.name;
       if ((!$('#personaGoal').value.trim() || $('#personaGoal').value === pattern.summary) && context.goal) $('#personaGoal').value = context.goal;
-      append('#personaBehaviours', ['Action']);
+      append('#personaBehaviours', ['Action', 'Decision-making', 'Level of involvement', 'Interaction']);
       append('#personaMotivations', ['Motivation']);
       append('#personaConstraints', ['Constraint']);
       append('#personaPainPoints', ['Problem']);
       append('#personaNeeds', ['Need']);
-      append('#personaDecisions', ['Decision-making']);
-      append('#personaInvolvement', ['Level of involvement']);
-      append('#personaInteractions', ['Interaction']);
       $('#personaDialogTitle').textContent = 'Review persona update from approved pattern';
       $('#personaReason').value = `Updated from approved pattern: ${pattern.title}`;
       $('#personaHistory').insertAdjacentHTML('afterbegin', `<div class="notice ok"><b>Approved evidence mapped for review.</b><br>Existing researcher-authored content was preserved. A previous system-generated title or goal was corrected only when it still matched the original pattern summary.${context.goalDerivedFromContext ? ' The proposed main goal is derived from the explicit role and lost/found situation and still requires your confirmation.' : ''}</div>`);
@@ -553,7 +535,7 @@
       const personaNames = { Owner: 'Owner', Finder: 'Temporary Carer', Spotter: 'Quick Spotter' };
       const name = personaNames[context.role] || 'Potential New Persona';
       if (!await confirmPersonaCreation(name, patternIds.length)) return;
-      persona = { id: id('per'), name, role: context.role || 'Other', goal: context.goal || '', status: 'Unvalidated', version: 1, patternIds: [], template: false, behaviours: [], motivations: [], constraints: [], painPoints: [], needs: [], decisions: [], involvement: [], interactions: [], created: now(), updated: now(), history: [{ version: 1, values: { name, role: context.role || 'Other', goal: context.goal || '', status: 'Unvalidated', behaviours: [], motivations: [], constraints: [], painPoints: [], needs: [], decisions: [], involvement: [], interactions: [], patternIds: [] }, reason: `Created after researcher confirmed ${patternIds.length} approved pattern${patternIds.length === 1 ? '' : 's'}`, changed: now(), origin: 'researcher-confirmed persona creation', evidencePatternIds: patternIds }] };
+      persona = { id: id('per'), name, role: context.role || 'Other', goal: context.goal || '', status: 'Unvalidated', version: 1, patternIds: [], template: false, behaviours: [], motivations: [], constraints: [], painPoints: [], needs: [], created: now(), updated: now(), history: [{ version: 1, values: { name, role: context.role || 'Other', goal: context.goal || '', status: 'Unvalidated', behaviours: [], motivations: [], constraints: [], painPoints: [], needs: [], patternIds: [] }, reason: `Created after researcher confirmed ${patternIds.length} approved pattern${patternIds.length === 1 ? '' : 's'}`, changed: now(), origin: 'researcher-confirmed persona creation', evidencePatternIds: patternIds }] };
       state.personas.unshift(persona);
     }
     queuePatternsForPersona(persona, patternIds);
@@ -602,7 +584,7 @@
         id: pattern.id, title: pattern.title, summary: pattern.summary,
         observations: pattern.observationIds.map(observationId => obs(observationId)).filter(Boolean).map(observation => ({ dimension: observation.dimension, text: observation.text, excerpt: observation.excerpt, sourceId: observation.sourceId })),
       }));
-      const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ persona: { name: persona.name, role: persona.role, mainGoal: persona.goal, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], decisions: persona.decisions || [], involvement: persona.involvement || [], interactions: persona.interactions || [] }, patterns: evidencePackage }) });
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ persona: { name: persona.name, role: persona.role, mainGoal: persona.goal, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [] }, patterns: evidencePackage }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.persona) throw new Error(data.error || `Synthesis returned ${response.status}`);
       openPersonaForm(persona.id);
@@ -614,9 +596,6 @@
       $('#personaConstraints').value = (draft.constraints || []).join('\n');
       $('#personaPainPoints').value = (draft.painPoints || []).join('\n');
       $('#personaNeeds').value = (draft.needs || []).join('\n');
-      $('#personaDecisions').value = (draft.decisions || []).join('\n');
-      $('#personaInvolvement').value = (draft.involvement || []).join('\n');
-      $('#personaInteractions').value = (draft.interactions || []).join('\n');
     } catch (error) {
       toast(`Persona synthesis unavailable: ${error.message}`);
       if (trigger) { trigger.disabled = false; trigger.textContent = 'Review proposed update'; }
@@ -643,8 +622,7 @@
     const record = {
       name: $('#personaName').value.trim(), role: $('#personaRole').value.trim(), goal: $('#personaGoal').value.trim(),
       behaviours: lines($('#personaBehaviours').value), motivations: lines($('#personaMotivations').value), constraints: lines($('#personaConstraints').value),
-      painPoints: lines($('#personaPainPoints').value), needs: lines($('#personaNeeds').value), decisions: lines($('#personaDecisions').value),
-      involvement: lines($('#personaInvolvement').value), interactions: lines($('#personaInteractions').value), status: $('#personaStatus').value, patternIds: evidencePatternIds,
+      painPoints: lines($('#personaPainPoints').value), needs: lines($('#personaNeeds').value), status: $('#personaStatus').value, patternIds: evidencePatternIds,
     };
     const reason = $('#personaReason').value.trim();
     if (!evidencePatternIds.length && record.status === 'Validated') {
@@ -654,7 +632,7 @@
     if (pid) {
       const persona = state.personas.find(item => item.id === pid);
       persona.history ??= [];
-      persona.history.unshift({ version: persona.version, values: { name: persona.name, role: persona.role, goal: persona.goal, status: persona.status, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], decisions: persona.decisions || [], involvement: persona.involvement || [], interactions: persona.interactions || [], patternIds: persona.patternIds || [] }, reason, changed: now(), origin: 'manual', evidencePatternIds });
+      persona.history.unshift({ version: persona.version, values: { name: persona.name, role: persona.role, goal: persona.goal, status: persona.status, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], patternIds: persona.patternIds || [] }, reason, changed: now(), origin: 'manual', evidencePatternIds });
       Object.assign(persona, record, { template: false, version: persona.version + 1, updated: now() });
       const updateId = event.target.dataset.updateId;
       if (updateId) {
@@ -812,7 +790,7 @@
     const persona = state.personas.find(item => item.id === pid);
     const snapshot = persona?.history?.find(item => item.version === version);
     if (!persona || !snapshot) return;
-    persona.history.unshift({ version: persona.version, values: { name: persona.name, role: persona.role, goal: persona.goal, status: persona.status, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], decisions: persona.decisions || [], involvement: persona.involvement || [], interactions: persona.interactions || [], patternIds: persona.patternIds || [] }, reason: `Snapshot before restoring version ${version}`, changed: now(), origin: 'restore', evidencePatternIds: persona.patternIds || [] });
+    persona.history.unshift({ version: persona.version, values: { name: persona.name, role: persona.role, goal: persona.goal, status: persona.status, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], patternIds: persona.patternIds || [] }, reason: `Snapshot before restoring version ${version}`, changed: now(), origin: 'restore', evidencePatternIds: persona.patternIds || [] });
     Object.assign(persona, clone(snapshot.values), { version: persona.version + 1, updated: now(), template: false });
     log(`Restored ${persona.name} from version ${version}`);
     save(); closeDialogs(); render(); openPersonaDetails(pid); toast(`Version ${version} restored as a new version`);
@@ -875,7 +853,7 @@
       persona.history ??= [];
       persona.history.unshift({
         version: persona.version,
-        values: { name: persona.name, role: persona.role, goal: persona.goal, status: persona.status, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], decisions: persona.decisions || [], involvement: persona.involvement || [], interactions: persona.interactions || [], patternIds: persona.patternIds || [] },
+        values: { name: persona.name, role: persona.role, goal: persona.goal, status: persona.status, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], patternIds: persona.patternIds || [] },
         reason: 'Evidence links archived before a complete reanalysis', changed: archivedAt, origin: 'analysis reset', evidencePatternIds: clone(persona.patternIds || []),
       });
       persona.patternIds = [];

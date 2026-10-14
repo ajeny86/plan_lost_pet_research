@@ -115,7 +115,7 @@ Integrity rules:
 - A Facebook post, phone call, search action or platform choice is Behaviour, never Main goal.
 - Main goal is the desired end result. For an Owner in a lost-pet case this may be finding the missing pet and bringing them home safely, but only when the evidence context supports it.
 - Motivation is an explicitly supported driver; Constraint is an external or practical limit; Pain point is experienced friction or uncertainty; Need is the support or information required to progress.
-- Keep Decision-making, Level of involvement and Interactions as separate sections. Do not hide or merge them into Behaviours.
+- Map Action, Decision-making, Level of involvement and Interaction evidence into Behaviours. Preserve their distinct meaning as separate behaviour statements; do not discard them.
 - Do not copy unsupported content from the current draft. Return an empty array for an unsupported section and null for an unsupported main goal.
 - Write each item as one clear sentence in English. Do not include source IDs in the wording.
 
@@ -207,11 +207,8 @@ const personaSynthesisSchema = {
     constraints: { type: 'array', items: { type: 'string' } },
     painPoints: { type: 'array', items: { type: 'string' } },
     needs: { type: 'array', items: { type: 'string' } },
-    decisions: { type: 'array', items: { type: 'string' } },
-    involvement: { type: 'array', items: { type: 'string' } },
-    interactions: { type: 'array', items: { type: 'string' } },
   },
-  required: ['role', 'mainGoal', 'behaviours', 'motivations', 'constraints', 'painPoints', 'needs', 'decisions', 'involvement', 'interactions'],
+  required: ['role', 'mainGoal', 'behaviours', 'motivations', 'constraints', 'painPoints', 'needs'],
 };
 
 createServer(async (req, res) => {
