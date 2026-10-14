@@ -126,6 +126,21 @@ Approved evidence package:
 ${JSON.stringify(body.patterns)}`;
 }
 
+function patternMergePromptFor(body) {
+  return `Merge the selected evidence-based patterns into one broader behavioural pattern.
+
+Integrity and writing rules:
+- Use only the supplied pattern text and source-linked observations. Never invent evidence, motives, participants or outcomes.
+- The selected patterns should share one participant role and one evidence dimension. Preserve that shared meaning.
+- Generalise only enough to cover every supplied observation. For example, finding a cat and finding a dog may become finding the missing pet.
+- Return one concise title and one complete, understandable English sentence as the summary.
+- The summary must end with normal sentence punctuation. Never use an ellipsis, dangling conjunction, abbreviation fragment or truncated clause.
+- Do not mention source IDs or say "the participant" unless needed for clarity.
+
+Selected patterns and supporting observations:
+${JSON.stringify(body.patterns)}`;
+}
+
 const analysisSchema = {
   type: 'object',
   additionalProperties: false,
@@ -211,6 +226,16 @@ const personaSynthesisSchema = {
   required: ['role', 'mainGoal', 'behaviours', 'motivations', 'constraints', 'painPoints', 'needs'],
 };
 
+const mergedPatternSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    title: { type: 'string' },
+    summary: { type: 'string' },
+  },
+  required: ['title', 'summary'],
+};
+
 createServer(async (req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
   if (req.method === 'GET' && pathname === '/health') return reply(req, res, 200, { status: 'ok', service: 'persona-builder-analysis' });
@@ -223,7 +248,7 @@ createServer(async (req, res) => {
     return res.end();
   }
 
-  if (req.method !== 'POST' || !['/api/analyze', '/api/import-url', '/api/extract-metadata', '/api/synthesize-persona'].includes(pathname)) {
+  if (req.method !== 'POST' || !['/api/analyze', '/api/import-url', '/api/extract-metadata', '/api/synthesize-persona', '/api/merge-patterns'].includes(pathname)) {
     return reply(req, res, 404, { error: 'Not found' });
   }
 
@@ -270,6 +295,25 @@ createServer(async (req, res) => {
 
   try {
     const body = JSON.parse(raw);
+    if (pathname === '/api/merge-patterns') {
+      if (!Array.isArray(body.patterns) || body.patterns.length < 2) return reply(req, res, 400, { error: 'At least two patterns are required' });
+      const upstream = await fetch(`${base}/responses`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          input: patternMergePromptFor(body),
+          text: { format: { type: 'json_schema', name: 'merged_pattern', strict: true, schema: mergedPatternSchema } },
+        }),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) return reply(req, res, 502, { error: data.error?.message || 'AI provider request failed' });
+      const outputText = data.output?.flatMap(item => item.content || []).find(item => item.type === 'output_text')?.text;
+      if (!outputText) return reply(req, res, 502, { error: 'AI provider returned no structured output' });
+      const pattern = JSON.parse(outputText);
+      if (!/[.!?]$/.test(pattern.summary) || /(?:\.{3}|…)$/.test(pattern.summary)) return reply(req, res, 502, { error: 'AI returned an incomplete pattern statement' });
+      return reply(req, res, 200, { pattern });
+    }
     if (pathname === '/api/synthesize-persona') {
       if (!body.persona || !Array.isArray(body.patterns) || !body.patterns.length) return reply(req, res, 400, { error: 'Persona and approved evidence are required' });
       const upstream = await fetch(`${base}/responses`, {

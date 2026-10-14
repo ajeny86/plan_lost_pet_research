@@ -39,12 +39,24 @@ function saveSolution(e){e.preventDefault();const eid=$('#solutionEvidence').val
 async function mergePatterns(){
   const ids=$$('[data-pattern-select]:checked').map(x=>x.dataset.patternSelect),selected=ids.map(i=>state.patterns.find(p=>p.id===i)).filter(Boolean);
   if(selected.length<2){toast('Select at least two patterns');return}
-  const title=await requestText('Merge patterns','Merged pattern title',selected[0].title);
+  const sourceTitles=selected.map(pattern=>pattern.title),summaries=[...new Set(selected.map(pattern=>pattern.summary?.trim()).filter(Boolean))].sort((a,b)=>b.length-a.length),patternPayload=selected.map(pattern=>({title:pattern.title,summary:pattern.summary,observations:(pattern.observationIds||[]).map(observationId=>obs(observationId)).filter(Boolean).map(observation=>({dimension:observation.dimension,text:observation.text,excerpt:observation.excerpt,sourceId:observation.sourceId}))}));
+  let draft={title:selected[0].title,summary:summaries[0]||selected[0].title},aiMerged=false;
+  const mergeButton=$('#mergePatternsBtn'),controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);
+  try{
+    mergeButton.disabled=true;mergeButton.textContent='Generating shared pattern…';
+    const endpoint=String(state.settings.endpoint||PUBLIC_AI_ENDPOINT).replace(/\/api\/analyze\/?$/,'/api/merge-patterns'),response=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({patterns:patternPayload}),signal:controller.signal}),data=await response.json().catch(()=>({}));
+    if(response.ok&&data.pattern?.title&&data.pattern?.summary){draft=data.pattern;aiMerged=true}
+  }catch(error){/* The researcher can still complete the merge manually when the AI backend is unavailable. */}
+  finally{clearTimeout(timeout);mergeButton.disabled=false;mergeButton.textContent='Merge selected patterns'}
+  const title=await requestText('Review merged pattern','Complete shared pattern title',draft.title);
   if(!title?.trim())return;
-  const canonical=selected[0],absorbedIds=ids.filter(patternId=>patternId!==canonical.id),sourceTitles=selected.map(pattern=>pattern.title),summaries=[...new Set(selected.map(pattern=>pattern.summary?.trim()).filter(Boolean))].sort((a,b)=>b.length-a.length);
-  Object.assign(canonical,{title:title.trim(),summary:summaries[0]||title.trim(),observationIds:[...new Set(selected.flatMap(pattern=>pattern.observationIds||[]))],status:selected.every(pattern=>pattern.status==='approved')?'approved':'pending',reviewState:selected.every(pattern=>pattern.status==='approved')?null:'edited',updated:now(),origin:'researcher merge'});
+  let summary=await requestText('Review merged pattern','Complete pattern statement — no ellipsis or truncated text',draft.summary);
+  while(summary&&(!/[.!?]$/.test(summary.trim())||/(?:\.{3}|…)$/.test(summary.trim()))){toast('Write one complete sentence ending with . ! or ?');summary=await requestText('Complete the pattern statement','The sentence must be complete and must not end with an ellipsis',summary.replace(/(?:\.{3}|…)$/,'').trim())}
+  if(!summary?.trim())return;
+  const canonical=selected[0],absorbedIds=ids.filter(patternId=>patternId!==canonical.id);
+  Object.assign(canonical,{title:title.trim(),summary:summary.trim(),observationIds:[...new Set(selected.flatMap(pattern=>pattern.observationIds||[]))],status:selected.every(pattern=>pattern.status==='approved')?'approved':'pending',reviewState:selected.every(pattern=>pattern.status==='approved')?null:'edited',updated:now(),origin:'researcher merge'});
   canonical.history=Array.isArray(canonical.history)?canonical.history:canonical.history?[canonical.history]:[];
-  canonical.history.unshift({action:'merge',at:now(),sourcePatternIds:ids,sourceTitles,sourceSummaries:summaries});
+  canonical.history.unshift({action:'merge',at:now(),sourcePatternIds:ids,sourceTitles,sourceSummaries:summaries,aiRegenerated:aiMerged});
   state.patterns=state.patterns.filter(pattern=>!absorbedIds.includes(pattern.id));
   const replaceIds=list=>[...new Set((list||[]).map(patternId=>ids.includes(patternId)?canonical.id:patternId))];
   state.personas.forEach(persona=>{persona.patternIds=replaceIds(persona.patternIds)});
