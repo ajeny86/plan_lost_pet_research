@@ -325,10 +325,10 @@
     bindDynamic();
   };
 
-  function assignProposalToPersona(proposalId) {
+  async function assignProposalToPersona(proposalId) {
     const candidates = state.personas.filter(persona => !persona.template);
     if (!candidates.length) return toast('Create an evidence-based persona first');
-    const answer = prompt(`Assign to persona:\n${candidates.map((persona, index) => `${index + 1}. ${persona.name}`).join('\n')}`, '1');
+    const answer = await requestText('Assign proposal to persona', `Enter a number: ${candidates.map((persona, index) => `${index + 1}. ${persona.name}`).join(' · ')}`, '1');
     const persona = candidates[Number(answer) - 1];
     const proposal = state.proposals.find(item => item.id === proposalId);
     if (!persona || !proposal) return;
@@ -349,9 +349,9 @@
     bindDynamic();
   };
 
-  function editGap(gapId) {
+  async function editGap(gapId) {
     const gap = state.gaps.find(item => item.id === gapId);
-    const text = prompt('Edit the evidence-linked interpretation.', gap.text);
+    const text = await requestText('Edit connection or gap', 'Evidence-linked interpretation', gap.text);
     if (!text?.trim()) return;
     gap.text = text.trim(); gap.status = 'pending'; gap.updated = now();
     log(`Edited connection or gap: ${gap.title}`); save(); render();
