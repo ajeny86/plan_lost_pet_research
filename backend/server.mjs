@@ -73,12 +73,17 @@ Boundary rules:
 - "Could not keep the animal because the landlord prohibited pets" is Constraint.
 - One excerpt may support more than one observation only when each interpretation is distinct and directly supported.
 
+Before proposing a new pattern, compare every new observation with existingPatterns. Match by underlying meaning, participant role and evidence dimension—not exact words, animal species or platform. For example, an Owner goal to "find my cat" and an existing Owner goal to "find my dog" both support the broader goal "recover the missing pet". In that case, set existingPatternId to that pattern's ID and do not create a duplicate pattern. Never match evidence across incompatible participant roles or different dimensions.
+
 Return strict JSON with observations and patterns.
-Each observation needs a unique short key such as o1, sourceId, dimension, text, exact excerpt and evidenceType.
+Each observation needs a unique short key such as o1, sourceId, dimension, text, exact excerpt, evidenceType, and existingPatternId. existingPatternId must be the matching supplied pattern ID or null.
 Each pattern needs title, summary, observationKeys and counterEvidenceKeys. observationKeys must refer to returned observation keys. Return an empty patterns array if the evidence does not support a recurring pattern.
 
 Research sources:
-${JSON.stringify(body.sources)}`;
+${JSON.stringify(body.sources)}
+
+Existing patterns:
+${JSON.stringify(body.existingPatterns || [])}`;
 }
 
 function metadataPromptFor(body) {
@@ -132,8 +137,9 @@ const analysisSchema = {
           text: { type: 'string' },
           excerpt: { type: 'string' },
           evidenceType: { type: 'string', enum: ['Direct observation', 'Interpretation'] },
+          existingPatternId: { anyOf: [{ type: 'string' }, { type: 'null' }] },
         },
-        required: ['key', 'sourceId', 'dimension', 'text', 'excerpt', 'evidenceType'],
+        required: ['key', 'sourceId', 'dimension', 'text', 'excerpt', 'evidenceType', 'existingPatternId'],
       },
     },
     patterns: {
@@ -316,8 +322,10 @@ createServer(async (req, res) => {
     if (!outputText) return reply(req, res, 502, { error: 'AI provider returned no structured output' });
     const parsed = JSON.parse(outputText);
     const sourceMap = new Map(body.sources.map(source => [source.id, source]));
+    const validExistingPatternIds = new Set((body.existingPatterns || []).map(pattern => pattern.id));
     const observations = (parsed.observations || []).filter(item => {
       const source = sourceMap.get(item.sourceId);
+      if (!validExistingPatternIds.has(item.existingPatternId)) item.existingPatternId = null;
       return source && item.excerpt && String(source.content || '').includes(item.excerpt);
     });
     const validKeys = new Set(observations.map(item => item.key));

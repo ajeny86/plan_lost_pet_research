@@ -10,9 +10,19 @@
   state.personaUpdates ??= [];
   let templatePendingDeletion = null;
 
-  // Approved observations remain evidence observations. Only the AI analysis
-  // creates cross-source patterns; approval must never create a one-item pattern.
-  groupApprovedObservations = function () {};
+  // Approval may attach a new observation to an AI-matched existing pattern,
+  // but never creates a one-observation pattern.
+  groupApprovedObservations = function () {
+    state.observations.filter(observation => observation.status === 'approved' && observation.suggestedPatternId && !observation.patternMatchApplied).forEach(observation => {
+      const pattern = state.patterns.find(item => item.id === observation.suggestedPatternId && item.status !== 'rejected');
+      if (!pattern) return;
+      pattern.observationIds = [...new Set([...(pattern.observationIds || []), observation.id])];
+      pattern.reviewState = 'edited';
+      pattern.history ??= [];
+      pattern.history.unshift({ action: 'Approved matching observation added to existing pattern', at: now(), observationIds: [observation.id] });
+      observation.patternMatchApplied = true;
+    });
+  };
 
   const researchDialogBody = $('#researchForm .dialog-body');
   $('#sourceUrl').closest('label').insertAdjacentHTML('afterend', `
@@ -652,9 +662,10 @@
 
   function evidenceContext(personas, dimension, sourceRecords) {
     const roles = [...new Set(sourceRecords.map(explicitRoleFromSource).filter(Boolean))];
-    const personaType = roles.length ? roles.join(', ') : 'Needs review';
-    const personaLabel = personas.length ? personas.map(persona => persona.name).join(', ') : 'Not assigned — needs review';
-    return `<div class="evidence-context"><span><b>Persona type:</b> ${esc(personaType)}</span><span><b>Persona:</b> ${esc(personaLabel)}</span><span><b>Section:</b> ${esc(DIMENSION_LABELS[dimension] || dimension || 'Unclassified')}</span></div>`;
+    const rolePersona = { Owner: 'Owner', Finder: 'Temporary Carer', Spotter: 'Quick Spotter' };
+    let personaLabel = personas.length ? personas.map(persona => persona.name).join(', ') : roles.length === 1 && rolePersona[roles[0]] ? rolePersona[roles[0]] : '';
+    if (!personaLabel) personaLabel = roles.length > 1 ? 'Mixed roles — needs review' : 'Potential new persona — needs review';
+    return `<div class="evidence-context"><span><b>Persona:</b> ${esc(personaLabel)}</span><span><b>Section:</b> ${esc(DIMENSION_LABELS[dimension] || dimension || 'Unclassified')}</span></div>`;
   }
 
   function dimensionGroupedCards(items, card, dimensionOf) {
@@ -694,7 +705,9 @@
     $('#observationList').innerHTML = groupedReviewMarkup(observations, observation => {
       const sourceRecord = source(observation.sourceId);
       const editable = reviewGroup(observation) === 'pending' || reviewGroup(observation) === 'edited';
-      return `<article class="observation-card"><span class="status ${reviewGroup(observation)}">${reviewGroup(observation) === 'edited' ? 'edited' : observation.status}</span>${evidenceContext(personasForObservation(observation), observation.dimension, [sourceRecord])}<div class="card-title">${esc(observation.dimension)}</div><p>${esc(observation.text)}</p><div class="excerpt">“${esc(observation.excerpt)}”</div><div class="meta">${esc(observation.evidenceType)} · Source: ${esc(sourceRecord?.title || 'Missing source')}</div><div class="review-actions">${editable ? `<button class="tiny" data-review-observation="${observation.id}" data-result="approved">Approve</button><button class="tiny" data-edit-observation="${observation.id}">Edit</button><button class="tiny" data-review-observation="${observation.id}" data-result="rejected">Reject</button>` : observation.status === 'approved' ? `<button class="tiny" data-edit-observation="${observation.id}">Edit</button>` : ''}<button class="tiny" data-source="${observation.sourceId}">Open source</button></div></article>`;
+      const suggestedPattern = observation.suggestedPatternId && state.patterns.find(pattern => pattern.id === observation.suggestedPatternId);
+      const matchNote = suggestedPattern ? `<div class="pattern-match-note"><b>${observation.patternMatchApplied ? 'Added to existing pattern:' : 'Matches existing pattern:'}</b> ${esc(patternDisplayTitle(suggestedPattern))}${observation.patternMatchApplied ? '' : ' · approve to add'}</div>` : '';
+      return `<article class="observation-card"><span class="status ${reviewGroup(observation)}">${reviewGroup(observation) === 'edited' ? 'edited' : observation.status}</span>${evidenceContext(personasForObservation(observation), observation.dimension, [sourceRecord])}<div class="card-title">${esc(observation.dimension)}</div><p>${esc(observation.text)}</p>${matchNote}<div class="excerpt">“${esc(observation.excerpt)}”</div><div class="meta">${esc(observation.evidenceType)} · Source: ${esc(sourceRecord?.title || 'Missing source')}</div><div class="review-actions">${editable ? `<button class="tiny" data-review-observation="${observation.id}" data-result="approved">Approve</button><button class="tiny" data-edit-observation="${observation.id}">Edit</button><button class="tiny" data-review-observation="${observation.id}" data-result="rejected">Reject</button>` : observation.status === 'approved' ? `<button class="tiny" data-edit-observation="${observation.id}">Edit</button>` : ''}<button class="tiny" data-source="${observation.sourceId}">Open source</button></div></article>`;
     }, 'No observations in this review state.', observation => observation.dimension);
     $('#patternList').innerHTML = groupedReviewMarkup(patterns, pattern => {
       const editable = reviewGroup(pattern) === 'pending' || reviewGroup(pattern) === 'edited';
@@ -830,6 +843,55 @@
     templatePendingDeletion = null;
     save(); closeDialogs(); render(); go('personas'); toast('Test persona deleted');
   };
+
+  analyse = async function () {
+    const pending = state.research.filter(record => !record.processed);
+    if (!pending.length) return toast('No unprocessed research sources');
+    const endpoint = state.settings.endpoint;
+    if (!endpoint) return toast('Configure an analysis backend in Settings');
+    const existingPatterns = state.patterns.filter(pattern => pattern.status !== 'rejected').map(pattern => {
+      const evidence = (pattern.observationIds || []).map(observationId => obs(observationId)).filter(Boolean);
+      const sourceRecords = evidence.map(observation => source(observation.sourceId)).filter(Boolean);
+      return { id: pattern.id, title: patternDisplayTitle(pattern), summary: pattern.summary, dimension: patternDimension(pattern), participantRoles: [...new Set(sourceRecords.map(explicitRoleFromSource).filter(Boolean))] };
+    });
+    $('#analyseBtn').disabled = true;
+    $('#analyseBtn').textContent = 'Analysing…';
+    try {
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ project: { name: 'Lost & Found Pets', location: 'Lisbon, Portugal' }, provider: state.settings.provider, model: state.settings.model, sources: pending.map(({ fileData, ...record }) => record), existingPatterns }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Backend returned ${response.status}`);
+      if (!Array.isArray(data.observations)) throw new Error('Backend response did not include observations');
+      const keyToId = new Map();
+      const matchedPatternByKey = new Map();
+      for (const raw of data.observations) {
+        const sourceRecord = source(raw.sourceId);
+        if (!sourceRecord || !raw.excerpt || !sourceRecord.content.includes(raw.excerpt)) continue;
+        const observationId = id('obs');
+        keyToId.set(raw.key, observationId);
+        const matchedPattern = state.patterns.find(pattern => pattern.id === raw.existingPatternId && pattern.status !== 'rejected');
+        if (matchedPattern) matchedPatternByKey.set(raw.key, matchedPattern.id);
+        state.observations.unshift({ id: observationId, sourceId: sourceRecord.id, dimension: raw.dimension || 'Unknown', text: raw.text, excerpt: raw.excerpt, evidenceType: raw.evidenceType === 'Interpretation' ? 'Interpretation' : 'Direct observation', status: 'pending', origin: 'AI', created: now(), reviewNote: '', suggestedPatternId: matchedPattern?.id || null });
+      }
+      for (const proposed of data.patterns || []) {
+        const unmatchedKeys = (proposed.observationKeys || []).filter(key => !matchedPatternByKey.has(key));
+        const observationIds = unmatchedKeys.map(key => keyToId.get(key)).filter(Boolean);
+        const counterEvidenceIds = (proposed.counterEvidenceKeys || []).map(key => keyToId.get(key)).filter(Boolean);
+        const independentSources = new Set(observationIds.map(observationId => obs(observationId)?.sourceId));
+        if (observationIds.length >= 2 && independentSources.size >= 2) state.patterns.unshift({ id: id('pat'), title: proposed.title, summary: proposed.summary, observationIds, counterEvidenceIds, status: 'pending', created: now(), origin: 'AI grouping', history: [{ action: 'AI grouping', at: now(), observationIds: [...observationIds] }] });
+      }
+      pending.forEach(record => { record.processed = true; });
+      log(`AI analysed ${pending.length} source(s), compared them with ${existingPatterns.length} existing pattern(s), and proposed ${keyToId.size} observation(s)`);
+      save(); render(); toast('New evidence was compared with existing patterns and is ready for review');
+    } catch (error) {
+      toast(`Analysis unavailable: ${error.message}`);
+      $('#aiConfigNotice').className = 'notice';
+      $('#aiConfigNotice').innerHTML = `<b>Analysis failed honestly—no findings were created.</b> ${esc(error.message)}`;
+    } finally {
+      $('#analyseBtn').disabled = false;
+      $('#analyseBtn').textContent = '✦ Analyse unprocessed research';
+    }
+  };
+  $('#analyseBtn').onclick = analyse;
   $('#exportBackupBtn').onclick = () => {
     const blob = new Blob([JSON.stringify({ exportedAt: now(), schemaVersion: 2, data: state }, null, 2)], { type: 'application/json' });
     const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `persona-builder-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(link.href);
