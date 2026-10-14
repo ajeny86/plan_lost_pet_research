@@ -385,26 +385,53 @@
     bindDynamic();
   };
 
+  function explicitRoleFromSource(record) {
+    const saved = record?.participantRole;
+    if (saved && saved !== 'Unknown' && saved !== MISSING_SOURCE_VALUE) return saved;
+    const text = `${record?.title || ''}\n${record?.content || ''}`;
+    if (/\b(owner interview|i am (?:the |a )?(?:pet |dog |cat )?owner|my (?:dog|cat|pet)\b)/i.test(text)) return 'Owner';
+    if (/\b(finder interview|i found (?:a|the) (?:dog|cat|pet|animal)|i took (?:a|the) (?:dog|cat|pet|animal) (?:home|inside|to))/i.test(text)) return 'Finder';
+    if (/\b(spotter interview|i (?:saw|spotted) (?:a|the) (?:dog|cat|pet|animal))/i.test(text)) return 'Spotter';
+    return null;
+  }
+
+  function personaContextFromPattern(pattern) {
+    const evidence = (pattern.observationIds || []).map(observationId => obs(observationId)).filter(Boolean);
+    const sourceRecords = [...new Map(evidence.map(item => [item.sourceId, source(item.sourceId)]).filter(([, item]) => item)).values()];
+    const roleCounts = new Map();
+    sourceRecords.map(explicitRoleFromSource).filter(Boolean).forEach(role => roleCounts.set(role, (roleCounts.get(role) || 0) + 1));
+    const role = [...roleCounts].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    const explicitGoals = [...new Set(evidence.filter(item => item.dimension === 'Goal').map(item => item.text.trim()).filter(Boolean))];
+    const allText = sourceRecords.map(item => `${item.reportStatus || ''}\n${item.content || ''}`).join('\n');
+    const lostContext = sourceRecords.some(item => item.reportStatus === 'Lost') || /\b(lost|missing|disappeared|did not return home)\b/i.test(allText);
+    const foundContext = sourceRecords.some(item => item.reportStatus === 'Found') || /\b(found (?:a|the) (?:dog|cat|pet|animal))\b/i.test(allText);
+    let goal = explicitGoals.join('\n');
+    if (!goal && role === 'Owner' && lostContext) goal = 'Find the missing pet and bring them home safely.';
+    if (!goal && role === 'Finder' && foundContext) goal = 'Keep the found animal safe and reunite them with their owner.';
+    if (!goal && role === 'Spotter') goal = 'Share an accurate, useful sighting so the animal can be safely recovered.';
+    const name = role === 'Owner' && lostContext ? 'Searching Owner' : role === 'Finder' ? 'Temporary Finder' : role === 'Spotter' ? 'Sighting Reporter' : pattern.title;
+    return { evidence, role, goal, name, goalDerivedFromContext: !explicitGoals.length && Boolean(goal) };
+  }
+
   openPersonaForm = function (pid = null, pattern = null) {
     originalOpenPersonaForm(pid, pattern);
     const persona = pid ? state.personas.find(item => item.id === pid) : null;
     const selected = new Set([...(persona?.patternIds || []), ...(pattern ? [pattern.id] : [])]);
     $('#personaEvidencePatterns').innerHTML = state.patterns.filter(item => item.status === 'approved').map(item => `<option value="${item.id}" ${selected.has(item.id) ? 'selected' : ''}>${esc(item.title)}</option>`).join('');
     if (pattern && !pid) {
-      const evidence = (pattern.observationIds || []).map(observationId => obs(observationId)).filter(Boolean);
+      const context = personaContextFromPattern(pattern);
+      const evidence = context.evidence;
       const unique = values => [...new Set(values.map(item => item?.trim()).filter(Boolean))];
       const byDimension = dimensions => unique(evidence.filter(item => dimensions.includes(item.dimension)).map(item => item.text));
-      const roles = unique(evidence.map(item => source(item.sourceId)?.participantRole).filter(role => role && role !== 'Unknown' && role !== MISSING_SOURCE_VALUE));
-      const goals = byDimension(['Goal']);
       const behaviours = byDimension(['Action', 'Decision-making', 'Interaction', 'Level of involvement']);
       const motivations = byDimension(['Motivation']);
       const constraints = byDimension(['Constraint']);
       const painPoints = byDimension(['Problem']);
       const needs = byDimension(['Need']);
       $('#personaDialogTitle').textContent = 'Review evidence-based persona draft';
-      $('#personaName').value = pattern.title;
-      $('#personaRole').value = roles.join(' / ');
-      $('#personaGoal').value = goals.join('\n') || pattern.summary;
+      $('#personaName').value = context.name;
+      $('#personaRole').value = context.role;
+      $('#personaGoal').value = context.goal || 'Not enough evidence to define the main goal — please review.';
       $('#personaBehaviours').value = behaviours.join('\n');
       $('#personaMotivations').value = motivations.join('\n');
       $('#personaConstraints').value = constraints.join('\n');
@@ -412,9 +439,10 @@
       $('#personaNeeds').value = needs.join('\n');
       $('#personaStatus').value = 'Unvalidated';
       $('#personaReason').value = `Draft generated from approved pattern: ${pattern.title}`;
-      $('#personaHistory').innerHTML = `<div class="notice ok"><b>Draft prefilled from reviewed evidence.</b><br>${evidence.length} source-linked observation${evidence.length === 1 ? '' : 's'} mapped into the relevant persona sections. Review the wording, then save. Empty sections mean this pattern contains no approved evidence for that category.</div>`;
+      $('#personaHistory').innerHTML = `<div class="notice ok"><b>Draft prefilled from reviewed evidence.</b><br>${evidence.length} source-linked observation${evidence.length === 1 ? '' : 's'} mapped into the relevant persona sections.${context.goalDerivedFromContext ? ' The main goal is a reviewable interpretation derived from the explicit participant role and lost/found situation.' : ''} Review the wording, then save. Empty sections mean this pattern contains no approved evidence for that category.</div>`;
     } else if (pattern && pid) {
-      const evidence = (pattern.observationIds || []).map(observationId => obs(observationId)).filter(Boolean);
+      const context = personaContextFromPattern(pattern);
+      const evidence = context.evidence;
       const unique = values => [...new Set(values.map(item => item?.trim()).filter(Boolean))];
       const append = (selector, dimensions) => {
         const field = $(selector);
@@ -422,9 +450,9 @@
         const additions = evidence.filter(item => dimensions.includes(item.dimension)).map(item => item.text);
         field.value = unique([...existing, ...additions]).join('\n');
       };
-      const roles = unique(evidence.map(item => source(item.sourceId)?.participantRole).filter(role => role && role !== 'Unknown' && role !== MISSING_SOURCE_VALUE));
-      if (!$('#personaRole').value.trim() && roles.length) $('#personaRole').value = roles.join(' / ');
-      if (!$('#personaGoal').value.trim()) $('#personaGoal').value = evidence.find(item => item.dimension === 'Goal')?.text || pattern.summary;
+      if ((!$('#personaRole').value.trim() || $('#personaRole').value === 'Unknown') && context.role) $('#personaRole').value = context.role;
+      if ($('#personaName').value === pattern.title && context.name !== pattern.title) $('#personaName').value = context.name;
+      if ((!$('#personaGoal').value.trim() || $('#personaGoal').value === pattern.summary) && context.goal) $('#personaGoal').value = context.goal;
       append('#personaBehaviours', ['Action', 'Decision-making', 'Interaction', 'Level of involvement']);
       append('#personaMotivations', ['Motivation']);
       append('#personaConstraints', ['Constraint']);
@@ -432,7 +460,7 @@
       append('#personaNeeds', ['Need']);
       $('#personaDialogTitle').textContent = 'Review persona update from approved pattern';
       $('#personaReason').value = `Updated from approved pattern: ${pattern.title}`;
-      $('#personaHistory').insertAdjacentHTML('afterbegin', `<div class="notice ok"><b>New approved evidence added for review.</b><br>The existing persona content was preserved; only new source-linked observations from “${esc(pattern.title)}” were added.</div>`);
+      $('#personaHistory').insertAdjacentHTML('afterbegin', `<div class="notice ok"><b>Approved evidence mapped for review.</b><br>Existing researcher-authored content was preserved. A previous system-generated title or goal was corrected only when it still matched the original pattern summary.${context.goalDerivedFromContext ? ' The proposed main goal is derived from the explicit role and lost/found situation and still requires your confirmation.' : ''}</div>`);
     }
   };
 
