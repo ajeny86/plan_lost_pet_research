@@ -26,8 +26,21 @@
     </section>
   `);
   researchDialogBody.insertAdjacentHTML('beforeend', `
-    <label class="privacy-check"><input id="privacyConfirmed" type="checkbox" required> I checked this material for names, phone numbers and private addresses. Common email and phone formats will also be redacted before storage.</label>
+    <p class="form-error" id="researchFormError" role="alert" aria-live="polite" hidden></p>
+    <label class="privacy-check"><input id="privacyConfirmed" type="checkbox"> I checked this material for names, phone numbers and private addresses. Common email and phone formats will also be redacted before storage.</label>
   `);
+  $('#researchForm').noValidate = true;
+
+  function researchFormError(message = '', field = null) {
+    const error = $('#researchFormError');
+    error.textContent = message;
+    error.hidden = !message;
+    if (message) {
+      error.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      field?.focus();
+    }
+    return false;
+  }
 
   $('#personaStatus').closest('label').insertAdjacentHTML('afterend', `
     <label>Supporting approved patterns<select id="personaEvidencePatterns" multiple size="4"></select></label>
@@ -90,6 +103,7 @@
 
   openResearch = function (sid = null) {
     $('#researchForm').reset();
+    researchFormError();
     $('#researchForm').dataset.editId = sid || '';
     $('#sourceDate').value = new Date().toISOString().slice(0, 10);
     const record = sid ? source(sid) : null;
@@ -109,21 +123,23 @@
 
   saveResearch = async function (event) {
     event.preventDefault();
-    if (!$('#privacyConfirmed').checked) return toast('Confirm the privacy check before saving');
+    researchFormError();
+    if (!$('#sourceTitle').value.trim()) return researchFormError('Add a short title for this research source.', $('#sourceTitle'));
+    if (!$('#privacyConfirmed').checked) return researchFormError('Confirm that you checked the material for personal information before saving.', $('#privacyConfirmed'));
     const file = $('#sourceFile').files[0];
     const image = $('#sourceImage').files[0];
-    if (file?.size > 1_500_000 || image?.size > 1_500_000) return toast('Each attachment must be smaller than 1.5 MB');
+    if (file?.size > 1_500_000 || image?.size > 1_500_000) return researchFormError('Each attachment must be smaller than 1.5 MB.', file?.size > 1_500_000 ? $('#sourceFile') : $('#sourceImage'));
     let content = $('#sourceContent').value.trim();
     let fileData = null;
     let imageData = null;
     if (file) {
       if (file.type === 'application/pdf') {
         fileData = await fileToData(file);
-        if (!content) return toast('For this prototype, paste the PDF text before saving so it can be analysed');
+        if (!content) return researchFormError('Paste the PDF text before saving so it can be analysed.', $('#sourceContent'));
       } else if (!content) content = await file.text();
     }
     if (image) imageData = await fileToData(image);
-    if (!content && !file) return toast('Add pasted content or a file');
+    if (!content && !file) return researchFormError('Add pasted content or upload a TXT, CSV or PDF file.', $('#sourceContent'));
     const redacted = redactPersonalData(content);
     const record = {
       type: $('#sourceType').value,
@@ -153,6 +169,7 @@
     const editId = event.target.dataset.editId;
     if (editId) {
       const existing = source(editId);
+      if (!existing) return researchFormError('This source could not be found. Close the form and try again.');
       if (existing.content !== redacted) {
         existing.previousContents ??= [];
         existing.previousContents.unshift({ content: existing.content, at: now(), reason: 'Researcher edited imported content' });

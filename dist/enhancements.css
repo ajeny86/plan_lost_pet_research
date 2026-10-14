@@ -13,6 +13,7 @@
 .source-metadata-heading span{font-size:9px;color:var(--muted)}
 .privacy-check{display:flex!important;grid-template-columns:18px 1fr!important;align-items:flex-start;gap:9px!important;padding:11px 12px;border-radius:9px;background:#fff4da;color:#785922;font-weight:600!important;line-height:1.45}
 .privacy-check input{width:auto;margin-top:2px}
+.form-error{margin:0;padding:11px 14px;border:1px solid #e6a6a0;border-radius:12px;background:#fff2f0;color:#8c2820;font-size:13px;font-weight:700;line-height:1.4}
 .source-metadata-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:13px 0}
 .source-metadata-list div{background:#f5f5fa;border-radius:8px;padding:8px}
 .source-metadata-list dt{font-size:8px;text-transform:uppercase;letter-spacing:.07em;color:#858aa0}
