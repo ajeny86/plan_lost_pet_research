@@ -53,6 +53,8 @@ Integrity rules:
 - Group observations by underlying meaning, not literal wording, animal species or channel name. For example, "find my cat" and "find my dog" may support one broader goal pattern such as "recover the missing pet" when their intent is equivalent.
 - Prefer a smaller set of coherent cross-source patterns over many narrow restatements. Do not return a pattern that merely repeats one observation.
 - Preserve contradictions. Do not force inconsistent observations into one pattern.
+- Preserve participant-role provenance throughout the analysis. Owner evidence belongs to Owner personas. Finder and Spotter evidence must remain distinct unless the supplied sources explicitly support the same broader Encounterer behaviour. Never combine Owner evidence with Finder or Spotter evidence in one pattern.
+- When participantRole is Unknown, keep it unknown and require researcher review instead of guessing a persona type.
 
 Classification framework (apply strictly):
 - Goal: the participant's desired end result. A channel or action is never a goal. Example: "find my missing dog and bring him home", not "post on Facebook".

@@ -58,3 +58,4 @@
 .proposal-evidence summary{cursor:pointer;font-size:10px;font-weight:750;color:#46549a}
 .proposal-evidence button{display:block;width:100%;border:0;background:#f7f5ff;color:#46549a;border-radius:7px;padding:8px;text-align:left;font:italic 10px/1.4 Georgia,serif;margin-top:6px;cursor:pointer}
 @media(max-width:760px){.source-metadata-list{grid-template-columns:1fr 1fr}.source-metadata-heading{align-items:flex-start;flex-direction:column}}
+.evidence-context{display:flex;flex-wrap:wrap;gap:6px 14px;margin:9px 0 8px;padding:8px 10px;border-radius:8px;background:#f3f4fb;color:#525a78;font-size:9px}.evidence-context b{color:var(--navy)}
