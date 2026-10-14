@@ -93,6 +93,25 @@ Source:
 ${JSON.stringify(body.source)}`;
 }
 
+function personaSynthesisPromptFor(body) {
+  return `Rewrite one behavioural persona from approved, source-linked evidence.
+
+Integrity rules:
+- Use only the supplied approved patterns and observations. Never invent details, demographics, motives, needs or goals.
+- Merge semantic duplicates into one concise statement. Preserve meaningfully different behaviours and contradictory evidence as separate statements.
+- A Facebook post, phone call, search action or platform choice is Behaviour, never Main goal.
+- Main goal is the desired end result. For an Owner in a lost-pet case this may be finding the missing pet and bringing them home safely, but only when the evidence context supports it.
+- Motivation is an explicitly supported driver; Constraint is an external or practical limit; Pain point is experienced friction or uncertainty; Need is the support or information required to progress.
+- Do not copy unsupported content from the current draft. Return an empty array for an unsupported section and null for an unsupported main goal.
+- Write each item as one clear sentence in English. Do not include source IDs in the wording.
+
+Current persona draft:
+${JSON.stringify(body.persona)}
+
+Approved evidence package:
+${JSON.stringify(body.patterns)}`;
+}
+
 const analysisSchema = {
   type: 'object',
   additionalProperties: false,
@@ -162,6 +181,21 @@ const metadataSchema = {
   required: ['participantRole', 'reportStatus', 'involvement', 'animalType', 'location', 'incidentDate', 'publicationDate', 'outcome', 'updates'],
 };
 
+const personaSynthesisSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    role: nullableEnum(['Owner', 'Finder', 'Spotter', 'Volunteer', 'Other']),
+    mainGoal: nullableString,
+    behaviours: { type: 'array', items: { type: 'string' } },
+    motivations: { type: 'array', items: { type: 'string' } },
+    constraints: { type: 'array', items: { type: 'string' } },
+    painPoints: { type: 'array', items: { type: 'string' } },
+    needs: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['role', 'mainGoal', 'behaviours', 'motivations', 'constraints', 'painPoints', 'needs'],
+};
+
 createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
@@ -173,7 +207,7 @@ createServer(async (req, res) => {
   }
 
   const pathname = new URL(req.url, 'http://localhost').pathname;
-  if (req.method !== 'POST' || !['/api/analyze', '/api/import-url', '/api/extract-metadata'].includes(pathname)) {
+  if (req.method !== 'POST' || !['/api/analyze', '/api/import-url', '/api/extract-metadata', '/api/synthesize-persona'].includes(pathname)) {
     return reply(req, res, 404, { error: 'Not found' });
   }
 
@@ -220,6 +254,23 @@ createServer(async (req, res) => {
 
   try {
     const body = JSON.parse(raw);
+    if (pathname === '/api/synthesize-persona') {
+      if (!body.persona || !Array.isArray(body.patterns) || !body.patterns.length) return reply(req, res, 400, { error: 'Persona and approved evidence are required' });
+      const upstream = await fetch(`${base}/responses`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          input: personaSynthesisPromptFor(body),
+          text: { format: { type: 'json_schema', name: 'persona_synthesis', strict: true, schema: personaSynthesisSchema } },
+        }),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) return reply(req, res, 502, { error: data.error?.message || 'AI provider request failed' });
+      const outputText = data.output?.flatMap(item => item.content || []).find(item => item.type === 'output_text')?.text;
+      if (!outputText) return reply(req, res, 502, { error: 'AI provider returned no structured output' });
+      return reply(req, res, 200, { persona: JSON.parse(outputText) });
+    }
     if (pathname === '/api/extract-metadata') {
       if (!body.source?.content) return reply(req, res, 400, { error: 'No source text supplied' });
       const upstream = await fetch(`${base}/responses`, {

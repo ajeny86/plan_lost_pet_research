@@ -4,8 +4,11 @@
   const originalBindDynamic = bindDynamic;
   const originalOpenPersonaDetails = openPersonaDetails;
   const originalOpenPersonaForm = openPersonaForm;
+  const originalPersonas = personas;
 
   state.analysisArchives ??= [];
+  state.personaUpdates ??= [];
+  let templatePendingDeletion = null;
 
   const researchDialogBody = $('#researchForm .dialog-body');
   $('#sourceUrl').closest('label').insertAdjacentHTML('afterend', `
@@ -416,6 +419,7 @@
   }
 
   openPersonaForm = function (pid = null, pattern = null) {
+    delete $('#personaForm').dataset.updateId;
     originalOpenPersonaForm(pid, pattern);
     const persona = pid ? state.personas.find(item => item.id === pid) : null;
     const selected = new Set([...(persona?.patternIds || []), ...(pattern ? [pattern.id] : [])]);
@@ -469,15 +473,68 @@
   personaFromPattern = async function (patternId) {
     const pattern = state.patterns.find(item => item.id === patternId);
     if (!pattern) return;
-    const exactLinked = state.personas.filter(persona => !persona.template && (persona.patternIds || []).includes(patternId));
     const context = personaContextFromPattern(pattern);
-    const sameRole = context.role ? state.personas.filter(persona => !persona.template && persona.role === context.role) : [];
-    const candidates = exactLinked.length ? exactLinked : sameRole;
-    if (!candidates.length) return openPersonaForm(null, pattern);
-    if (candidates.length === 1) return openPersonaForm(candidates[0].id, pattern);
-    const answer = await requestText('Update persona from approved pattern', `Enter a number: ${candidates.map((persona, index) => `${index + 1}. ${persona.name}`).join(' · ')}`, '1');
+    const evidenceBased = state.personas.filter(persona => !persona.template);
+    const sameRole = context.role ? evidenceBased.filter(persona => persona.role === context.role) : [];
+    const candidates = sameRole.length ? sameRole : evidenceBased;
+    if (!candidates.length) return toast('Create an empty proto-persona first, then add this pattern to it');
+    const answer = candidates.length === 1 ? '1' : await requestText('Add pattern to persona', `Enter a number: ${candidates.map((persona, index) => `${index + 1}. ${persona.name}`).join(' · ')}`, '1');
     const persona = candidates[Number(answer) - 1];
-    if (persona) openPersonaForm(persona.id, pattern);
+    if (!persona) return;
+    let update = state.personaUpdates.find(item => item.personaId === persona.id && item.status === 'pending');
+    if (!update) {
+      update = { id: id('update'), personaId: persona.id, patternIds: [], status: 'pending', created: now() };
+      state.personaUpdates.unshift(update);
+    }
+    update.patternIds = [...new Set([...update.patternIds, patternId])];
+    update.updated = now();
+    log(`Queued approved evidence for ${persona.name}`);
+    save(); render(); toast(`Pattern added to ${persona.name}'s update queue`);
+  };
+
+  async function reviewPersonaUpdate(updateId) {
+    const update = state.personaUpdates.find(item => item.id === updateId && item.status === 'pending');
+    const persona = update && state.personas.find(item => item.id === update.personaId);
+    const allPatternIds = update ? [...new Set([...(persona?.patternIds || []), ...update.patternIds])] : [];
+    const patterns = allPatternIds.map(patternId => state.patterns.find(item => item.id === patternId)).filter(item => item?.status === 'approved');
+    if (!persona || !patterns.length) return toast('This update no longer has available evidence');
+    const trigger = $(`[data-review-persona-update="${updateId}"]`);
+    if (trigger) { trigger.disabled = true; trigger.textContent = 'Synthesising evidence…'; }
+    try {
+      const endpoint = String(state.settings.endpoint || PUBLIC_AI_ENDPOINT).replace(/\/api\/analyze\/?$/, '/api/synthesize-persona');
+      const evidencePackage = patterns.map(pattern => ({
+        id: pattern.id, title: pattern.title, summary: pattern.summary,
+        observations: pattern.observationIds.map(observationId => obs(observationId)).filter(Boolean).map(observation => ({ dimension: observation.dimension, text: observation.text, excerpt: observation.excerpt, sourceId: observation.sourceId })),
+      }));
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ persona: { name: persona.name, role: persona.role, mainGoal: persona.goal, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [] }, patterns: evidencePackage }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.persona) throw new Error(data.error || `Synthesis returned ${response.status}`);
+      openPersonaForm(persona.id);
+      const draft = data.persona;
+      if (draft.role) $('#personaRole').value = draft.role;
+      $('#personaGoal').value = draft.mainGoal || '';
+      $('#personaBehaviours').value = (draft.behaviours || []).join('\n');
+      $('#personaMotivations').value = (draft.motivations || []).join('\n');
+      $('#personaConstraints').value = (draft.constraints || []).join('\n');
+      $('#personaPainPoints').value = (draft.painPoints || []).join('\n');
+      $('#personaNeeds').value = (draft.needs || []).join('\n');
+    } catch (error) {
+      toast(`Persona synthesis unavailable: ${error.message}`);
+      if (trigger) { trigger.disabled = false; trigger.textContent = 'Review proposed update'; }
+      return;
+    }
+    patterns.forEach(pattern => { const option = $(`#personaEvidencePatterns option[value="${pattern.id}"]`); if (option) option.selected = true; });
+    $('#personaDialogTitle').textContent = 'Review proposed persona update';
+    $('#personaReason').value = `AI synthesis reviewed from approved evidence: ${patterns.map(pattern => pattern.title).join('; ')}`;
+    $('#personaForm').dataset.updateId = update.id;
+    $('#personaHistory').insertAdjacentHTML('afterbegin', `<div class="notice neutral"><b>Patterns were merged by meaning; nothing has been applied yet.</b><br>The AI rewrote all sections from the complete approved evidence package. Review every field. Saving creates a new persona version and records the supporting patterns.</div>`);
+  }
+
+  personas = function () {
+    originalPersonas();
+    const pending = state.personaUpdates.filter(item => item.status === 'pending').map(item => ({ ...item, persona: state.personas.find(persona => persona.id === item.personaId) })).filter(item => item.persona);
+    $('#personaUpdateQueue').innerHTML = pending.length ? `<section class="persona-update-queue"><h2>New evidence available</h2><p>Approved patterns are waiting to be semantically merged and reviewed before they change a persona.</p>${pending.map(item => `<article class="persona-update-item"><div><b>${esc(item.persona.name)}</b><p>${item.patternIds.length} new approved pattern${item.patternIds.length === 1 ? '' : 's'} ready for full persona re-synthesis.</p></div><button class="primary" data-review-persona-update="${item.id}">Review proposed update</button></article>`).join('')}</section>` : '';
+    $$('[data-review-persona-update]').forEach(button => button.onclick = () => reviewPersonaUpdate(button.dataset.reviewPersonaUpdate));
   };
 
   savePersona = function (event) {
@@ -499,6 +556,12 @@
       persona.history ??= [];
       persona.history.unshift({ version: persona.version, values: { name: persona.name, role: persona.role, goal: persona.goal, status: persona.status, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], patternIds: persona.patternIds || [] }, reason, changed: now(), origin: 'manual', evidencePatternIds });
       Object.assign(persona, record, { template: false, version: persona.version + 1, updated: now() });
+      const updateId = event.target.dataset.updateId;
+      if (updateId) {
+        const update = state.personaUpdates.find(item => item.id === updateId);
+        if (update) { update.status = 'applied'; update.appliedAt = now(); update.appliedVersion = persona.version; }
+        delete event.target.dataset.updateId;
+      }
       log(`Updated persona: ${persona.name}`);
     } else {
       const patternId = event.target.dataset.pattern || null;
@@ -549,14 +612,16 @@
     $('#patternList').innerHTML = groupedReviewMarkup(patterns, pattern => {
       const editable = reviewGroup(pattern) === 'pending' || reviewGroup(pattern) === 'edited';
       const linkedPersonas = state.personas.filter(persona => !persona.template && (persona.patternIds || []).includes(pattern.id));
-      const application = pattern.status === 'approved' ? `<div class="pattern-application ${linkedPersonas.length ? 'applied' : 'not-applied'}">${linkedPersonas.length ? `Applied to: ${esc(linkedPersonas.map(persona => persona.name).join(', '))}` : 'Approved · Not yet applied to a persona'}</div>` : '';
-      return `<article class="pattern-card"><label class="pattern-select"><input type="checkbox" data-pattern-select="${pattern.id}"> Select</label><span class="status ${reviewGroup(pattern)}">${reviewGroup(pattern) === 'edited' ? 'edited' : pattern.status}</span><div class="card-title">${esc(pattern.title)}</div><p>${esc(pattern.summary)}</p><div class="meta">${pattern.observationIds.length} observation${pattern.observationIds.length === 1 ? '' : 's'} · ${new Set(pattern.observationIds.map(id => obs(id)?.sourceId)).size} independent source(s)</div>${application}<details class="grouped-evidence"><summary>View supporting evidence</summary><div class="evidence-links">${pattern.observationIds.map(id => { const observation = obs(id); return observation ? `<button data-source="${observation.sourceId}">${esc(observation.excerpt)}</button>` : ''; }).join('')}</div></details><div class="review-actions">${editable ? `<button class="tiny" data-review-pattern="${pattern.id}" data-result="approved">Approve</button><button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-review-pattern="${pattern.id}" data-result="rejected">Reject</button>` : pattern.status === 'approved' ? `<button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-pattern-persona="${pattern.id}">${linkedPersonas.length ? 'Update linked persona' : 'Create persona from pattern'}</button>` : ''}${pattern.observationIds.length > 1 ? `<button class="tiny" data-split-pattern="${pattern.id}">Split pattern</button>` : ''}</div></article>`;
+      const queuedPersonas = state.personaUpdates.filter(update => update.status === 'pending' && update.patternIds.includes(pattern.id)).map(update => state.personas.find(persona => persona.id === update.personaId)).filter(Boolean);
+      const application = pattern.status === 'approved' ? `<div class="pattern-application ${linkedPersonas.length ? 'applied' : 'not-applied'}">${queuedPersonas.length ? `Queued for review: ${esc(queuedPersonas.map(persona => persona.name).join(', '))}` : linkedPersonas.length ? `Applied to: ${esc(linkedPersonas.map(persona => persona.name).join(', '))}` : 'Approved · Not yet assigned to a persona'}</div>` : '';
+      return `<article class="pattern-card"><label class="pattern-select"><input type="checkbox" data-pattern-select="${pattern.id}"> Select</label><span class="status ${reviewGroup(pattern)}">${reviewGroup(pattern) === 'edited' ? 'edited' : pattern.status}</span><div class="card-title">${esc(pattern.title)}</div><p>${esc(pattern.summary)}</p><div class="meta">${pattern.observationIds.length} observation${pattern.observationIds.length === 1 ? '' : 's'} · ${new Set(pattern.observationIds.map(id => obs(id)?.sourceId)).size} independent source(s)</div>${application}<details class="grouped-evidence"><summary>View supporting evidence</summary><div class="evidence-links">${pattern.observationIds.map(id => { const observation = obs(id); return observation ? `<button data-source="${observation.sourceId}">${esc(observation.excerpt)}</button>` : ''; }).join('')}</div></details><div class="review-actions">${editable ? `<button class="tiny" data-review-pattern="${pattern.id}" data-result="approved">Approve</button><button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-review-pattern="${pattern.id}" data-result="rejected">Reject</button>` : pattern.status === 'approved' ? `<button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-pattern-persona="${pattern.id}" ${queuedPersonas.length ? 'disabled' : ''}>${queuedPersonas.length ? 'Added to persona update queue' : 'Add pattern to persona'}</button>` : ''}${pattern.observationIds.length > 1 ? `<button class="tiny" data-split-pattern="${pattern.id}">Split pattern</button>` : ''}</div></article>`;
     }, 'No patterns in this review state.');
     bindDynamic();
   };
 
   openPersonaDetails = function (pid) {
     originalOpenPersonaDetails(pid);
+    $('#deleteTemplateBtn')?.remove();
     const persona = state.personas.find(item => item.id === pid);
     const patterns = evidenceForPersona(persona);
     const sheet = $('#personaViewContent .persona-view-sheet');
@@ -572,6 +637,14 @@
     `);
     $$('#personaViewContent [data-source]').forEach(button => button.onclick = () => { closeDialogs(); openSource(button.dataset.source); });
     $$('#personaViewContent [data-restore-persona]').forEach(button => button.onclick = () => restorePersonaVersion(button.dataset.restorePersona, Number(button.dataset.historyVersion)));
+    if (persona.template) {
+      $('#editPersonaBtn').insertAdjacentHTML('beforebegin', `<button type="button" class="secondary template-delete-button" id="deleteTemplateBtn">Delete test persona</button>`);
+      $('#deleteTemplateBtn').onclick = () => {
+        templatePendingDeletion = persona.id;
+        $('#deleteTemplateText').textContent = `Delete “${persona.name}” and all of its demonstration content?`;
+        closeDialogs(); show('#deleteTemplateDialog');
+      };
+    }
   };
 
   function restorePersonaVersion(pid, version) {
@@ -591,6 +664,7 @@
     $$('[data-persona]').forEach(button => button.onclick = () => openPersonaDetails(button.dataset.persona));
     $$('[data-assign-proposal]').forEach(button => button.onclick = () => assignProposalToPersona(button.dataset.assignProposal));
     $$('[data-edit-gap]').forEach(button => button.onclick = () => editGap(button.dataset.editGap));
+    $$('[data-review-persona-update]').forEach(button => button.onclick = () => reviewPersonaUpdate(button.dataset.reviewPersonaUpdate));
   };
 
   $('#researchForm').onsubmit = saveResearch;
@@ -638,6 +712,16 @@
     save(); closeDialogs(); render(); go('analysis');
     toast('Previous analysis archived. Starting a new analysis run…');
     await analyse();
+  };
+  $('#deleteTemplateForm').onsubmit = event => {
+    event.preventDefault();
+    const persona = state.personas.find(item => item.id === templatePendingDeletion && item.template);
+    if (!persona) return closeDialogs();
+    state.personas = state.personas.filter(item => item.id !== persona.id);
+    state.personaUpdates = state.personaUpdates.filter(item => item.personaId !== persona.id);
+    log(`Deleted test persona: ${persona.name}`);
+    templatePendingDeletion = null;
+    save(); closeDialogs(); render(); go('personas'); toast('Test persona deleted');
   };
   $('#exportBackupBtn').onclick = () => {
     const blob = new Blob([JSON.stringify({ exportedAt: now(), schemaVersion: 2, data: state }, null, 2)], { type: 'application/json' });
