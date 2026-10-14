@@ -41,23 +41,31 @@ async function mergePatterns(){
   if(selected.length<2){toast('Select at least two patterns');return}
   const sourceTitles=selected.map(pattern=>pattern.title),summaries=[...new Set(selected.map(pattern=>pattern.summary?.trim()).filter(Boolean))].sort((a,b)=>b.length-a.length),patternPayload=selected.map(pattern=>({title:pattern.title,summary:pattern.summary,observations:(pattern.observationIds||[]).map(observationId=>obs(observationId)).filter(Boolean).map(observation=>({dimension:observation.dimension,text:observation.text,excerpt:observation.excerpt,sourceId:observation.sourceId}))}));
   let draft={title:selected[0].title,summary:summaries[0]||selected[0].title},aiMerged=false;
-  const mergeButton=$('#mergePatternsSelectedBtn'),controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);
+  const mergeButton=$('#mergePatternsSelectedBtn'),controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),8000);
   try{
     mergeButton.disabled=true;mergeButton.textContent='Generating shared pattern…';
     const endpoint=String(state.settings.endpoint||PUBLIC_AI_ENDPOINT).replace(/\/api\/analyze\/?$/,'/api/merge-patterns'),response=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({patterns:patternPayload}),signal:controller.signal}),data=await response.json().catch(()=>({}));
     if(response.ok&&data.pattern?.title&&data.pattern?.summary){draft=data.pattern;aiMerged=true}
   }catch(error){/* The researcher can still complete the merge manually when the AI backend is unavailable. */}
-  finally{clearTimeout(timeout);mergeButton.disabled=false;mergeButton.textContent='Merge selected patterns'}
-  const title=await requestText('Review merged pattern','Complete shared pattern title',draft.title);
-  if(!title?.trim())return;
-  let summary=await requestText('Review merged pattern','Complete pattern statement — no ellipsis or truncated text',draft.summary);
-  while(summary&&(!/[.!?]$/.test(summary.trim())||/(?:\.{3}|…)$/.test(summary.trim()))){toast('Write one complete sentence ending with . ! or ?');summary=await requestText('Complete the pattern statement','The sentence must be complete and must not end with an ellipsis',summary.replace(/(?:\.{3}|…)$/,'').trim())}
-  if(!summary?.trim())return;
-  const canonical=selected[0],absorbedIds=ids.filter(patternId=>patternId!==canonical.id);
+  finally{clearTimeout(timeout);mergeButton.disabled=false;mergeButton.textContent='Merge into one pattern'}
+  $('#mergePatternIds').value=ids.join(',');
+  $('#mergePatternTitle').value=draft.title||'';
+  $('#mergePatternSummary').value=draft.summary||'';
+  $('#mergePatternCount').textContent=`${selected.length} selected patterns → 1 approved pattern`;
+  $('#mergePatternForm').dataset.aiMerged=aiMerged?'true':'false';
+  show('#mergePatternDialog')
+}
+function approveMergedPattern(e){
+  e.preventDefault();
+  const ids=$('#mergePatternIds').value.split(',').filter(Boolean),selected=ids.map(i=>state.patterns.find(p=>p.id===i)).filter(Boolean),title=$('#mergePatternTitle').value.trim(),summary=$('#mergePatternSummary').value.trim();
+  if(selected.length<2){closeDialogs();render();toast('The selected patterns are no longer available');return}
+  if(!title){toast('Add a complete combined pattern title');$('#mergePatternTitle').focus();return}
+  if(!summary||!/[.!?]$/.test(summary)||/(?:\.{3}|…)$/.test(summary)){toast('Write one complete statement ending with . ! or ?');$('#mergePatternSummary').focus();return}
+  const sourceTitles=selected.map(pattern=>pattern.title),sourceSummaries=[...new Set(selected.map(pattern=>pattern.summary?.trim()).filter(Boolean))],canonical=selected[0],absorbedIds=ids.filter(patternId=>patternId!==canonical.id);
   const affectedPersonaIds=[...new Set(state.personas.filter(persona=>!persona.template&&(persona.patternIds||[]).some(patternId=>ids.includes(patternId))).map(persona=>persona.id))];
-  Object.assign(canonical,{title:title.trim(),summary:summary.trim(),observationIds:[...new Set(selected.flatMap(pattern=>pattern.observationIds||[]))],status:'pending',reviewState:'edited',updated:now(),origin:'researcher merge',affectedPersonaIds});
+  Object.assign(canonical,{title,summary,observationIds:[...new Set(selected.flatMap(pattern=>pattern.observationIds||[]))],counterEvidenceIds:[...new Set(selected.flatMap(pattern=>pattern.counterEvidenceIds||[]))],status:'approved',reviewState:'approved',reviewed:now(),updated:now(),origin:'researcher merge',affectedPersonaIds:[]});
   canonical.history=Array.isArray(canonical.history)?canonical.history:canonical.history?[canonical.history]:[];
-  canonical.history.unshift({action:'merge',at:now(),sourcePatternIds:ids,sourceTitles,sourceSummaries:summaries,aiRegenerated:aiMerged});
+  canonical.history.unshift({action:'merge',at:now(),sourcePatternIds:ids,sourceTitles,sourceSummaries,aiRegenerated:e.target.dataset.aiMerged==='true',approvedAt:now()});
   state.patterns=state.patterns.filter(pattern=>!absorbedIds.includes(pattern.id));
   const replaceIds=list=>[...new Set((list||[]).map(patternId=>ids.includes(patternId)?canonical.id:patternId))];
   state.personas.forEach(persona=>{persona.patternIds=replaceIds(persona.patternIds)});
@@ -65,7 +73,9 @@ async function mergePatterns(){
   state.proposals.forEach(proposal=>{proposal.patternIds=replaceIds(proposal.patternIds)});
   state.gaps.forEach(gap=>{gap.patternIds=replaceIds(gap.patternIds)});
   state.solutions.forEach(solution=>{if(ids.some(patternId=>solution.evidenceId===`pattern:${patternId}`)){solution.evidenceId=`pattern:${canonical.id}`;solution.evidenceLabel=`Pattern: ${canonical.title}`}});
-  log(`Merged ${selected.length} patterns into one grouped pattern for review: ${canonical.title}`);save();render();toast(`One merged pattern created — review and approve it next`)
+  state.personaUpdates??=[];
+  affectedPersonaIds.forEach(personaId=>{let update=state.personaUpdates.find(candidate=>candidate.personaId===personaId&&candidate.status==='pending');if(!update){update={id:id('update'),personaId,patternIds:[],status:'pending',created:now()};state.personaUpdates.unshift(update)}update.patternIds=[...new Set([...update.patternIds,canonical.id])];update.updated=now()});
+  log(`Merged and approved ${selected.length} patterns as one pattern: ${canonical.title}`);save();closeDialogs();render();toast('Two patterns were replaced by one approved pattern')
 }
 function splitPattern(pid){const p=state.patterns.find(x=>x.id===pid);if(p.observationIds.length<2)return;state.patterns=state.patterns.filter(x=>x.id!==pid);for(const oid of p.observationIds){const o=obs(oid);state.patterns.unshift({id:id('pat'),title:`${o.dimension}: ${o.text.slice(0,58)}`,summary:o.text,observationIds:[oid],status:'pending',created:now(),origin:'researcher split',history:{action:'split',sourcePatternId:pid}})}log(`Split pattern: ${p.title}`);save();render()}
 function settingsNotice(){const configured=state.settings.endpoint&&state.settings.endpoint!=='/api/analyze';$('#aiConfigNotice').className=`notice ${configured?'ok':''}`;$('#aiConfigNotice').innerHTML=configured?`Analysis will call <b>${esc(state.settings.provider)}</b> through the configured secure backend. Results still require review.`:'<b>AI backend not configured for this hosted prototype.</b> Import and manual evidence review work now. Set a backend endpoint in Settings; API keys must remain server-side.'}
@@ -95,3 +105,4 @@ async function analyse(){const pending=state.research.filter(x=>!x.processed);if
 function openSettings(){$('#apiEndpoint').value=state.settings.endpoint;$('#apiProvider').value=state.settings.provider;$('#apiModel').value=state.settings.model;show('#settingsDialog')}
 function saveSettings(e){e.preventDefault();state.settings={...state.settings,endpoint:$('#apiEndpoint').value.trim(),provider:$('#apiProvider').value.trim()||'Backend provider',model:$('#apiModel').value.trim()||'Backend configured'};save();closeDialogs();render();toast('Backend settings saved')}
 $$('#nav button').forEach(x=>x.onclick=()=>go(x.dataset.view));$$('[data-go]').forEach(x=>x.onclick=()=>go(x.dataset.go));$$('.close').forEach(x=>x.onclick=closeDialogs);$('#quickAdd').onclick=$('#addResearchBtn').onclick=openResearch;$('#quickRefresh').onclick=refreshSources;$('#newPersonaBtn').onclick=()=>openPersonaForm();$('#compareBtn').onclick=comparePersonas;$('#assessProposalsBtn').onclick=assessProposals;$('#newGapBtn').onclick=openGap;$('#newSolutionBtn').onclick=()=>openSolution();$('#mergePatternsBtn').onclick=mergePatterns;$('#mergePatternsSelectedBtn').onclick=mergePatterns;$('#clearPatternSelectionBtn').onclick=()=>{$$('[data-pattern-select]').forEach(box=>box.checked=false);updatePatternSelection()};$('#settingsBtn').onclick=openSettings;$('#helpBtn').onclick=()=>toast('Start with Research Data → Add Research Data');$('#manualObservationBtn').onclick=openObservation;$('#editPersonaBtn').onclick=()=>openPersonaForm(activePersona);$('#analyseBtn').onclick=analyse;$('#fetchUrlBtn').onclick=fetchPublicUrl;$('#researchForm').onsubmit=saveResearch;$('#observationForm').onsubmit=saveObservation;$('#personaForm').onsubmit=savePersona;$('#gapForm').onsubmit=saveGap;$('#solutionForm').onsubmit=saveSolution;$('#settingsForm').onsubmit=saveSettings;$('#confirmAction').onclick=confirmDecision;$('#researchSearch').oninput=research;$('#globalSearch').oninput=e=>{$('#researchSearch').value=e.target.value;go('research')};$$('#researchTabs button').forEach(x=>x.onclick=()=>{$$('#researchTabs button').forEach(b=>b.classList.remove('active'));x.classList.add('active');researchType=x.dataset.type;research()});window.onhashchange=()=>{const h=location.hash.slice(1);if($(`#${h}View`))go(h)};go(location.hash.slice(1)||'dashboard');
+$('#mergePatternForm').onsubmit=approveMergedPattern;
