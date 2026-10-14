@@ -372,21 +372,49 @@
     log(`Assigned proposal evidence to ${persona.name}`); save(); render(); toast('Evidence assigned to the existing persona');
   }
 
+  function relationshipTypeClass(type) {
+    return type === 'Shared Pattern' ? 'connection' : type === 'Behavioural Gap' ? 'behaviour-gap' : 'information-gap';
+  }
+
+  function relationshipMap() {
+    const personas = state.personas.filter(persona => !persona.template);
+    const visible = state.gaps.filter(gap => gap.status !== 'rejected');
+    const personaById = new Map(personas.map(persona => [persona.id, persona]));
+    const routes = visible.map(gap => {
+      const linked = (gap.personaIds || []).map(personaId => personaById.get(personaId)).filter(Boolean);
+      const nodes = linked.length ? linked : [{ name: 'Persona not assigned', role: 'Select a persona in the card' }];
+      const destination = nodes.length > 1 ? nodes.slice(1) : [{ name: 'Evidence still needed', role: 'Add another persona or supporting pattern' }];
+      return `<button class="relationship-route ${relationshipTypeClass(gap.type)}" data-gap-focus="${gap.id}"><span class="relationship-node"><b>${esc(nodes[0].name)}</b><small>${esc(nodes[0].role)}</small></span><span class="relationship-connector"><i></i><b>${esc(gap.type)}</b><small>${esc(gap.title || 'Not enough information')}</small><i></i></span><span class="relationship-destinations">${destination.map(persona => `<span class="relationship-node"><b>${esc(persona.name)}</b><small>${esc(persona.role)}</small></span>`).join('')}</span></button>`;
+    }).join('');
+    $('#gapMap').innerHTML = `<section class="relationship-map"><div class="relationship-map-head"><div><span class="eyebrow">PERSONA RELATIONSHIP MAP</span><h2>Connections and evidence gaps</h2><p>Each line links the personas named in a relationship card. Select a line to review its details.</p></div><div class="relationship-legend"><span class="connection">Connection</span><span class="information-gap">Information gap</span><span class="behaviour-gap">Behavioural gap</span></div></div>${routes||`<div class="relationship-empty"><b>No relationships mapped yet</b><p>Add a connection or gap to make cross-persona evidence visible here.</p></div>`}</section>`;
+    $$('[data-gap-focus]').forEach(button => button.onclick = () => {
+      const card = $(`#gap-${button.dataset.gapFocus}`);
+      if (!card) return;
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('evidence-pattern-focus');
+      setTimeout(() => card.classList.remove('evidence-pattern-focus'), 2200);
+    });
+  }
+
   gaps = function () {
+    const missing = 'Not enough information';
+    $('#gapCount').textContent = state.gaps.length;
+    relationshipMap();
     $('#gapList').innerHTML = state.gaps.length ? state.gaps.map(gap => {
-      const patterns = gap.patternIds.map(patternId => state.patterns.find(pattern => pattern.id === patternId)).filter(Boolean);
+      const patterns = (gap.patternIds || []).map(patternId => state.patterns.find(pattern => pattern.id === patternId)).filter(Boolean);
+      const personas = (gap.personaIds || []).map(personaId => state.personas.find(persona => persona.id === personaId)).filter(Boolean);
       const evidence = patterns.flatMap(pattern => pattern.observationIds.map(observationId => obs(observationId))).filter(Boolean);
-      return `<article class="pattern-card"><span class="status ${gap.status}">${esc(gap.status)}</span><div class="card-title">${esc(gap.type)} · ${esc(gap.title)}</div><p>${esc(gap.text)}</p><div class="meta">Supporting patterns: ${patterns.map(pattern => esc(pattern.title)).join('; ')}</div><details class="proposal-evidence"><summary>View source evidence</summary>${evidence.map(item => `<button data-source="${item.sourceId}">“${esc(item.excerpt)}”</button>`).join('')}</details>${gap.status === 'pending' ? `<div class="review-actions"><button class="tiny" data-review-gap="${gap.id}" data-result="approved">Approve</button><button class="tiny" data-edit-gap="${gap.id}">Edit</button><button class="tiny" data-review-gap="${gap.id}" data-result="rejected">Reject</button></div>` : ''}</article>`;
-    }).join('') : empty('No connections or gaps', 'Add one only when approved patterns provide supporting evidence.');
+      const title = gap.title || missing;
+      const meaning = gap.text || `${missing} — expected: an explanation of how this relationship affects the selected personas or their journey.`;
+      const personaText = personas.length ? personas.map(persona => persona.name).join(' · ') : `${missing} — expected: at least one related persona.`;
+      const patternText = patterns.length ? patterns.map(pattern => pattern.title).join('; ') : `${missing} — expected: one or more approved grouped patterns.`;
+      return `<article class="pattern-card relationship-card ${relationshipTypeClass(gap.type)}" id="gap-${gap.id}"><div class="relationship-card-head"><span class="relationship-type">${esc(gap.type)}</span><span class="status ${gap.status}">${esc(gap.status)}</span></div><div class="relationship-personas"><b>Personas</b><span>${esc(personaText)}</span></div><div class="card-title">${esc(title)}</div><p>${esc(meaning)}</p><div class="relationship-field ${patterns.length?'':'missing-field'}"><b>Supporting grouped patterns</b><span>${esc(patternText)}</span></div>${evidence.length?`<details class="proposal-evidence"><summary>View ${evidence.length} source observation${evidence.length===1?'':'s'}</summary>${evidence.map(item => `<button data-source="${item.sourceId}">“${esc(item.excerpt)}”</button>`).join('')}</details>`:'<p class="relationship-expectation">Expected next: link approved evidence or keep this clearly marked as a manual hypothesis.</p>'}<div class="review-actions">${gap.status === 'pending' ? `<button class="tiny" data-review-gap="${gap.id}" data-result="approved">Approve</button>` : ''}<button class="tiny" data-edit-gap="${gap.id}">Edit</button>${gap.status === 'pending' ? `<button class="tiny" data-review-gap="${gap.id}" data-result="rejected">Reject</button>` : ''}</div></article>`;
+    }).join('') : empty('No connections or gaps', 'Add a manual relationship or link approved persona evidence.');
     bindDynamic();
   };
 
   async function editGap(gapId) {
-    const gap = state.gaps.find(item => item.id === gapId);
-    const text = await requestText('Edit connection or gap', 'Evidence-linked interpretation', gap.text);
-    if (!text?.trim()) return;
-    gap.text = text.trim(); gap.status = 'pending'; gap.updated = now();
-    log(`Edited connection or gap: ${gap.title}`); save(); render();
+    openGap(gapId);
   }
 
   const originalOpenSolution = openSolution;
