@@ -449,6 +449,41 @@
     return (persona.patternIds || []).map(patternId => state.patterns.find(pattern => pattern.id === patternId)).filter(Boolean);
   }
 
+  const REVIEW_GROUPS = [
+    ['pending', 'Needs review'],
+    ['approved', 'Approved'],
+    ['edited', 'Edited — needs re-review'],
+    ['rejected', 'Rejected'],
+  ];
+
+  function reviewGroup(item) {
+    return item.reviewState === 'edited' ? 'edited' : item.status === 'approved' ? 'approved' : item.status === 'rejected' ? 'rejected' : 'pending';
+  }
+
+  function groupedReviewMarkup(items, card, emptyText) {
+    return REVIEW_GROUPS.map(([key, label]) => {
+      const group = items.filter(item => reviewGroup(item) === key);
+      return `<details class="review-group review-group-${key}" ${key === 'rejected' ? '' : 'open'}><summary><span>${label}</span><b>${group.length}</b></summary><div class="review-group-list">${group.length ? group.map(card).join('') : `<p class="review-group-empty">${esc(emptyText)}</p>`}</div></details>`;
+    }).join('');
+  }
+
+  analysis = function () {
+    const observations = state.observations.slice().sort((a, b) => b.created.localeCompare(a.created));
+    const patterns = state.patterns.slice().sort((a, b) => b.created.localeCompare(a.created));
+    $('#observationCount').textContent = observations.length;
+    $('#patternCount').textContent = patterns.length;
+    $('#observationList').innerHTML = groupedReviewMarkup(observations, observation => {
+      const sourceRecord = source(observation.sourceId);
+      const editable = reviewGroup(observation) === 'pending' || reviewGroup(observation) === 'edited';
+      return `<article class="observation-card"><span class="status ${reviewGroup(observation)}">${reviewGroup(observation) === 'edited' ? 'edited' : observation.status}</span><div class="card-title">${esc(observation.dimension)}</div><p>${esc(observation.text)}</p><div class="excerpt">“${esc(observation.excerpt)}”</div><div class="meta">${esc(observation.evidenceType)} · Source: ${esc(sourceRecord?.title || 'Missing source')}</div><div class="review-actions">${editable ? `<button class="tiny" data-review-observation="${observation.id}" data-result="approved">Approve</button><button class="tiny" data-edit-observation="${observation.id}">Edit</button><button class="tiny" data-review-observation="${observation.id}" data-result="rejected">Reject</button>` : observation.status === 'approved' ? `<button class="tiny" data-edit-observation="${observation.id}">Edit</button>` : ''}<button class="tiny" data-source="${observation.sourceId}">Open source</button></div></article>`;
+    }, 'No observations in this review state.');
+    $('#patternList').innerHTML = groupedReviewMarkup(patterns, pattern => {
+      const editable = reviewGroup(pattern) === 'pending' || reviewGroup(pattern) === 'edited';
+      return `<article class="pattern-card"><label class="pattern-select"><input type="checkbox" data-pattern-select="${pattern.id}"> Select</label><span class="status ${reviewGroup(pattern)}">${reviewGroup(pattern) === 'edited' ? 'edited' : pattern.status}</span><div class="card-title">${esc(pattern.title)}</div><p>${esc(pattern.summary)}</p><div class="meta">${pattern.observationIds.length} observation${pattern.observationIds.length === 1 ? '' : 's'} · ${new Set(pattern.observationIds.map(id => obs(id)?.sourceId)).size} independent source(s)</div><details class="grouped-evidence"><summary>View supporting evidence</summary><div class="evidence-links">${pattern.observationIds.map(id => { const observation = obs(id); return observation ? `<button data-source="${observation.sourceId}">${esc(observation.excerpt)}</button>` : ''; }).join('')}</div></details><div class="review-actions">${editable ? `<button class="tiny" data-review-pattern="${pattern.id}" data-result="approved">Approve</button><button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-review-pattern="${pattern.id}" data-result="rejected">Reject</button>` : pattern.status === 'approved' ? `<button class="tiny" data-edit-pattern="${pattern.id}">Edit</button><button class="tiny" data-pattern-persona="${pattern.id}">Create / update persona</button>` : ''}${pattern.observationIds.length > 1 ? `<button class="tiny" data-split-pattern="${pattern.id}">Split pattern</button>` : ''}</div></article>`;
+    }, 'No patterns in this review state.');
+    bindDynamic();
+  };
+
   openPersonaDetails = function (pid) {
     originalOpenPersonaDetails(pid);
     const persona = state.personas.find(item => item.id === pid);
