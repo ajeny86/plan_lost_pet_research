@@ -17,3 +17,4 @@ presentation-output/
 /.sites-runtime/
 .env*
 npm-debug.log*
+/github-pages/demo/

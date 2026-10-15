@@ -1,5 +1,5 @@
 export const LOCAL_KEY = 'persona-builder-priority1-v1';
-export const WORKSPACE = 'https://persona-atlas.rightotter16.chatgpt.site/';
+export const WORKSPACE = 'https://ajeny86.github.io/plan_lost_pet_research/demo/';
 const VIEWS = new Set(['dashboard', 'research', 'analysis', 'personas', 'proposed', 'gaps', 'solutions']);
 
 export function destination(hash) {
@@ -33,7 +33,7 @@ if (typeof document !== 'undefined') {
   const target = destination(window.location.hash);
   document.querySelector('#openWorkspace').href = target;
   if (local.hasWork) {
-    document.querySelector('#status').textContent = 'Persona Builder now uses one shared workspace. Recover any older local work before continuing.';
+    document.querySelector('#status').textContent = 'The public classroom demo is open to everyone. You can also download any older local work before continuing.';
     document.querySelector('#localData').hidden = false;
     document.querySelector('#localSummary').textContent = local.unreadable ? 'The older local copy could not be read automatically. Keep this browser’s site data and download a recovery copy if available.' : `${local.research} research source(s) and ${local.personas} research persona(s), plus any saved analysis and review history.`;
     const button = document.querySelector('#downloadBackup');
@@ -47,6 +47,6 @@ if (typeof document !== 'undefined') {
   } else if (!new URLSearchParams(window.location.search).has('stay')) {
     window.location.replace(target);
   } else {
-    document.querySelector('#status').textContent = 'Continue to the shared research workspace. Sign in with your authorised account to see the same project on every device.';
+    document.querySelector('#status').textContent = 'Open the public classroom demo. No account, sign-in or approval is required.';
   }
 }

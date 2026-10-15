@@ -29,6 +29,9 @@ jobs:
         with:
           enablement: true
 
+      - name: Prepare public classroom demo
+        run: node scripts/build-public-demo.mjs
+
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
         with:
