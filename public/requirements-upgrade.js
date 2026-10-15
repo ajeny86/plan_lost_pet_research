@@ -70,21 +70,31 @@
     </section>
   `);
   researchDialogBody.insertAdjacentHTML('beforeend', `
-    <label class="privacy-check"><input id="privacyConfirmed" type="checkbox"> I checked this material for names, phone numbers and private addresses. Common email and phone formats will also be redacted before storage.</label>
+    <label class="privacy-check"><input id="privacyConfirmed" type="checkbox"> <span><span class="required-field-marker">Required</span> I checked this material for names, phone numbers and private addresses. Common email and phone formats will also be redacted before storage.</span></label>
   `);
-  $('#researchForm .dialog-actions').insertAdjacentHTML('afterbegin', '<p class="form-error" id="researchFormError" role="alert" aria-live="polite" hidden></p>');
+  researchDialogBody.insertAdjacentHTML('afterbegin', '<p class="form-error research-form-error" id="researchFormError" role="alert" aria-live="assertive" hidden></p>');
   $('#researchForm').noValidate = true;
 
   function researchFormError(message = '', field = null) {
     const error = $('#researchFormError');
+    $$('#researchForm [aria-invalid="true"]').forEach(item => item.removeAttribute('aria-invalid'));
     error.textContent = message;
     error.hidden = !message;
     if (message) {
-      toast(message);
-      field?.focus();
+      if (field) {
+        field.setAttribute('aria-invalid', 'true');
+        field.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        requestAnimationFrame(() => field.focus({ preventScroll: true }));
+      } else {
+        error.scrollIntoView({ block: 'nearest' });
+      }
     }
     return false;
   }
+
+  $('#researchForm').addEventListener('input', event => {
+    if (event.target.matches('[aria-invalid="true"]')) event.target.removeAttribute('aria-invalid');
+  });
 
   $('#personaStatus').closest('label').insertAdjacentHTML('afterend', `
     <label class="persona-evidence-field">Supporting approved patterns<span>These are the reviewed patterns that will remain traceable from the saved persona.</span><div id="personaEvidencePatternCards" class="persona-evidence-patterns"></div><select id="personaEvidencePatterns" multiple hidden aria-hidden="true"></select></label>
@@ -199,7 +209,8 @@
   saveResearch = async function (event) {
     event.preventDefault();
     researchFormError();
-    if (!$('#sourceTitle').value.trim()) return researchFormError('Add a short title for this research source.', $('#sourceTitle'));
+    if (!$('#sourceTitle').value.trim()) return researchFormError('Title is required. Add a short name that identifies this research source.', $('#sourceTitle'));
+    if (!$('#participantId').value.trim()) return researchFormError('Participant / case ID is required. Use an anonymous code such as OWNER-03.', $('#participantId'));
     if (!$('#privacyConfirmed').checked) return researchFormError('Confirm that you checked the material for personal information before saving.', $('#privacyConfirmed'));
     const file = $('#sourceFile').files[0];
     const image = $('#sourceImage').files[0];
@@ -1210,8 +1221,11 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       const label = missing.closest('label')?.childNodes[0]?.textContent?.trim() || 'required field';
-      toast(`Complete the ${label.toLowerCase()} field`);
-      missing.focus();
+      if (form.id === 'researchForm') researchFormError(`Complete the ${label.toLowerCase()} field.`, missing);
+      else {
+        toast(`Complete the ${label.toLowerCase()} field`);
+        missing.focus();
+      }
     }, true);
   });
 
