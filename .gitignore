@@ -7,3 +7,13 @@ persona-builder-*.tar.gz
 # Locally generated presentation and PDF handoff files
 presentation-build/
 presentation-output/
+
+# Framework dependencies and build output
+/node_modules/
+/.next/
+/.vinext/
+/dist/
+/.wrangler/
+/.sites-runtime/
+.env*
+npm-debug.log*

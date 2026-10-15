@@ -2,13 +2,14 @@
 
 Evidence-based UX research workspace for Lost & Found Pets in Lisbon.
 
-## Run the interface
+## Run the full application
 
 ```bash
-python3 -m http.server 4173 --directory dist
+pnpm install
+pnpm run dev
 ```
 
-Open `http://127.0.0.1:4173`.
+The hosted application uses a Sites D1 database. Local preview uses a separate local D1 instance.
 
 ## Configure real AI analysis
 
@@ -20,11 +21,13 @@ node backend/server.mjs
 
 In **Settings**, set the analysis endpoint to `http://127.0.0.1:8787/api/analyze`. The backend rejects unconfigured requests and the interface creates no findings when analysis fails.
 
-The public GitHub Pages build is static and cannot run this backend. For a public AI demonstration, deploy `backend/server.mjs` to a server-side host, configure the environment variables there, set `ALLOWED_ORIGIN` to the public frontend origin, and enter the deployed `/api/analyze` URL in Settings. Never place `AI_API_KEY` in `dist`, browser storage or repository files.
+The public GitHub Pages build is a static fallback and cannot provide shared database storage. The primary hosted Site provides D1 persistence. AI analysis remains on the separately deployed secure backend. Never place `AI_API_KEY` in `public`, browser storage or repository files.
 
 ## Persistence
 
-Records persist in the browser's local storage and can be used without an AI key. Research originals, observations, review decisions, personas and version history are stored separately. This is device-local prototype storage, not a multi-user database.
+The primary hosted Site stores the complete research workspace in a shared D1 database. Browser local storage remains as a device-level safety copy. On first launch after the database upgrade, existing browser-local records are migrated into D1 automatically. Subsequent changes are version-checked before saving so an older browser tab cannot silently overwrite a newer cloud revision.
+
+The workspace state includes research originals, observations, patterns, review decisions, personas, relationship maps, solution hypotheses and version history. Uploaded binary attachments remain subject to the prototype repository-size limit.
 
 ## Implemented
 
@@ -44,12 +47,14 @@ Records persist in the browser's local storage and can be used without an AI key
 - Full behavioural persona comparison, evidence-linked connections/gaps, and solution hypotheses
 - JSON repository backup and restore for moving browser-local data between devices
 - Responsive dashboard and navigation matching the approved visual direction
+- Shared cross-device D1 persistence with first-run migration from browser storage
+- Dashboard workflow guidance with live counts and direct links to the next required review step
 
 Test template images are illustrative and never treated as research participants. Empty fields remain explicitly unknown until a researcher adds supported information.
 
 ## Known prototype limits
 
 - PDF attachments are retained, but the researcher must paste extracted text before analysis.
-- Browser storage is persistent only on the current browser profile. Use JSON backup for portability.
+- The GitHub Pages fallback uses browser-local storage because GitHub Pages cannot run the D1 API. Use the primary hosted Site for cross-device work.
 - Public-source retrieval works only for accessible text pages and does not bypass logins or access restrictions.
 - Automatic duplicate detection, journey maps and user-story generation remain future work.

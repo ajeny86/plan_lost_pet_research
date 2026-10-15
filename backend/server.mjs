@@ -4,7 +4,7 @@ import { isIP } from 'node:net';
 const port = Number(process.env.PORT || 8787);
 const apiKey = process.env.AI_API_KEY || '';
 const base = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
-const model = process.env.AI_MODEL || 'gpt-4.1-mini';
+const model = process.env.AI_MODEL || 'gpt-6.1-sol';
 const allowedOrigins = new Set([
   'http://127.0.0.1:4173',
   'https://persona-atlas.rightotter16.chatgpt.site',
@@ -242,7 +242,7 @@ const mergedPatternSchema = {
 
 createServer(async (req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
-  if (req.method === 'GET' && pathname === '/health') return reply(req, res, 200, { status: 'ok', service: 'persona-builder-analysis' });
+  if (req.method === 'GET' && pathname === '/health') return reply(req, res, 200, { status: 'ok', service: 'persona-builder-analysis', model });
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'access-control-allow-origin': allowedOrigin(req),
