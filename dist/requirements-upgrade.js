@@ -920,23 +920,32 @@
     const persona = state.personas.find(item => item.id === pid);
     const patterns = evidenceForPersona(persona);
     const sheet = $('#personaViewContent .persona-view-sheet');
-    const sectionDimensions = [
-      ['Goal'],
-      ['Action', 'Decision-making', 'Level of involvement', 'Interaction'],
-      ['Motivation'],
-      ['Constraint'],
-      ['Problem'],
-      ['Need'],
+    const evidenceSections = [
+      { label: 'Main goal', dimensions: ['Goal'] },
+      { label: 'Behaviours', dimensions: ['Action', 'Decision-making', 'Level of involvement', 'Interaction'] },
+      { label: 'Motivations', dimensions: ['Motivation'] },
+      { label: 'Constraints', dimensions: ['Constraint'] },
+      { label: 'Pain points', dimensions: ['Problem'] },
+      { label: 'Needs', dimensions: ['Need'] },
     ];
     [...$('#personaViewContent .persona-view-sections').querySelectorAll('details')].forEach((details, index) => {
-      const linked = patterns.filter(pattern => (pattern.observationIds || []).some(observationId => sectionDimensions[index]?.includes(obs(observationId)?.dimension)));
+      const linked = patterns.filter(pattern => (pattern.observationIds || []).some(observationId => evidenceSections[index]?.dimensions.includes(obs(observationId)?.dimension)));
       if (!linked.length) return;
       details.querySelector('.persona-section-detail').insertAdjacentHTML('beforeend', `<div class="persona-section-patterns"><b>Supporting grouped patterns</b>${linked.map(pattern => `<button type="button" data-open-persona-pattern="${pattern.id}">Open pattern: ${esc(patternDisplayTitle(pattern))}</button>`).join('')}</div>`);
     });
+    const groupedResearch = evidenceSections.map(section => {
+      const groups = patterns.map(pattern => {
+        const observations = (pattern.observationIds || []).map(observationId => obs(observationId)).filter(observation => observation && section.dimensions.includes(observation.dimension));
+        if (!observations.length) return '';
+        return `<details><summary>${esc(patternDisplayTitle(pattern))} <span>${observations.length} observation${observations.length === 1 ? '' : 's'}</span></summary><div>${observations.map(observation => `<button class="evidence-source-button" data-source="${observation.sourceId}">“${esc(observation.excerpt)}”</button>`).join('')}</div></details>`;
+      }).filter(Boolean).join('');
+      return groups ? `<section class="persona-provenance-group"><h4>${esc(section.label)}</h4>${groups}</section>` : '';
+    }).filter(Boolean).join('');
     sheet.insertAdjacentHTML('beforeend', `
       <section class="persona-provenance">
         <h3>Supporting research evidence</h3>
-        ${patterns.length ? patterns.map(pattern => `<details><summary>${esc(pattern.title)} <span>${pattern.observationIds.length} observation(s)</span></summary><div>${pattern.observationIds.map(observationId => { const observation = obs(observationId); return observation ? `<button class="evidence-source-button" data-source="${observation.sourceId}">“${esc(observation.excerpt)}”</button>` : ''; }).join('')}</div></details>`).join('') : '<p class="missing">No approved pattern evidence linked yet.</p>'}
+        <p class="persona-provenance-intro">Evidence is organised in the same order as the persona profile. Open any item to review the original source.</p>
+        ${groupedResearch || '<p class="missing">No approved pattern evidence linked to a persona section yet.</p>'}
       </section>
       <section class="persona-version-history">
         <h3>Version history</h3>
