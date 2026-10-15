@@ -1061,6 +1061,9 @@
     save(); closeDialogs(); render(); go('analysis'); toast('Observation updated and moved to re-review');
   };
   $('#solutionForm').onsubmit = saveSolution;
+  $('#personaViewDialog').addEventListener('click', event => {
+    if (event.target === $('#personaViewDialog')) closeDialogs();
+  });
   $('#addResearchBtn').onclick = () => openResearch();
   $('#quickAdd').onclick = () => openResearch();
   $('#newPersonaBtn').onclick = () => openPersonaForm();
