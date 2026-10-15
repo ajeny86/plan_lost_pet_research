@@ -427,7 +427,14 @@
         if (activeFlowFilters.has(selected)) activeFlowFilters.delete(selected); else activeFlowFilters.add(selected);
         filter.classList.toggle('active', activeFlowFilters.has(selected));
         filter.setAttribute('aria-pressed', String(activeFlowFilters.has(selected)));
-        overview.classList.toggle('active', activeFlowFilters.size === 0);
+        const individualFilters = $$('.relationship-legend [data-flow-filter]');
+        if (activeFlowFilters.size === individualFilters.length) {
+          activeFlowFilters.clear();
+          individualFilters.forEach(item => { item.classList.remove('active'); item.setAttribute('aria-pressed', 'false'); });
+          overview.classList.add('active');
+        } else {
+          overview.classList.toggle('active', activeFlowFilters.size === 0);
+        }
       }
       let shown = 0;
       $$('.relationship-route').forEach(route => {
@@ -502,14 +509,31 @@
     log(`${solutionId ? 'Updated' : 'Added'} solution hypothesis: ${data.title}`); save(); closeDialogs(); render(); toast('Solution hypothesis saved');
   };
 
+  function reviewSolution(solutionId, result) {
+    const solution = state.solutions.find(item => item.id === solutionId);
+    if (!solution) return toast('This solution hypothesis is no longer available');
+    solution.status = result;
+    solution.updated = now();
+    solution.reviewedAt = now();
+    log(`${result === 'Rejected' ? 'Rejected' : 'Approved'} solution hypothesis: ${solution.title || 'Untitled solution'}`);
+    save(); render(); go('solutions');
+    toast(result === 'Rejected' ? 'Solution moved to Rejected' : 'Solution moved to Approved');
+  }
+
   solutions = function () {
     const missing = 'Not enough information';
-    $('#solutionList').innerHTML = state.solutions.length ? state.solutions.map(solution => {
+    const card = solution => {
       const linkedPersonas = (solution.personaIds || []).map(personaId => state.personas.find(persona => persona.id === personaId)).filter(Boolean);
       const names = linkedPersonas.map(persona => `${persona.template ? '[Test] ' : ''}${persona.name}`);
       const field = (label, value, expectation) => `<div class="solution-field ${value ? '' : 'missing-field'}"><b>${label}</b><span>${esc(value || `${missing} — expected: ${expectation}`)}</span></div>`;
-      return `<article class="pattern-card solution-card"><div class="relationship-card-head"><span class="eyebrow">SOLUTION HYPOTHESIS</span><span class="status ${solution.status.toLowerCase().replaceAll(' ', '-')}">${esc(solution.status)}</span></div><div class="card-title">${esc(solution.title || `${missing} — expected: a short solution name`)}</div>${field('Problem or gap', solution.problem, 'the evidence-backed problem this idea addresses.')}${field('Proposed response', solution.text, 'a concise, testable solution hypothesis.')}${field('Relevant personas', names.join(' · '), 'one or more affected personas.')}${field('Supporting evidence', solution.evidenceLabel, 'an approved grouped pattern or connection gap.')}${field('Review note', solution.comment, 'optional context, assumptions or the next validation step.')}<div class="review-actions"><button class="tiny" data-edit-solution="${solution.id}">Edit / update status</button></div></article>`;
-    }).join('') : empty('No solution hypotheses', 'Add an idea only after an evidence-backed problem or gap is identified.');
+      return `<article class="pattern-card solution-card"><div class="relationship-card-head"><span class="eyebrow">SOLUTION HYPOTHESIS</span><span class="status ${solution.status.toLowerCase().replaceAll(' ', '-')}">${esc(solution.status)}</span></div><div class="card-title">${esc(solution.title || `${missing} — expected: a short solution name`)}</div>${field('Problem or gap', solution.problem, 'the evidence-backed problem this idea addresses.')}${field('Proposed response', solution.text, 'a concise, testable solution hypothesis.')}${field('Relevant personas', names.join(' · '), 'one or more affected personas.')}${field('Supporting evidence', solution.evidenceLabel, 'an approved grouped pattern or connection gap.')}${field('Review note', solution.comment, 'optional context, assumptions or the next validation step.')}<div class="review-actions solution-review-actions"><button class="tiny solution-approve" data-review-solution="${solution.id}" data-result="Approved Idea">Approve</button><button class="tiny solution-reject" data-review-solution="${solution.id}" data-result="Rejected">Reject</button><button class="tiny" data-edit-solution="${solution.id}">Edit</button></div></article>`;
+    };
+    const groups = [
+      { key: 'pending', label: 'Needs review', items: state.solutions.filter(item => !['Approved Idea', 'Testing', 'Validated', 'Rejected'].includes(item.status)) },
+      { key: 'approved', label: 'Approved', items: state.solutions.filter(item => ['Approved Idea', 'Testing', 'Validated'].includes(item.status)) },
+      { key: 'rejected', label: 'Rejected', items: state.solutions.filter(item => item.status === 'Rejected') },
+    ];
+    $('#solutionList').innerHTML = state.solutions.length ? groups.map(group => `<details class="review-group review-group-${group.key}" ${group.key === 'rejected' ? '' : 'open'}><summary><span>${group.label}</span><b>${group.items.length}</b></summary><div class="review-group-list">${group.items.length ? group.items.map(card).join('') : '<p class="review-group-empty">No solution hypotheses in this section.</p>'}</div></details>`).join('') : empty('No solution hypotheses', 'Add an idea only after an evidence-backed problem or gap is identified.');
     bindDynamic();
   };
 
@@ -986,6 +1010,7 @@
     $$('[data-edit-pattern-assignment]').forEach(button => button.onclick = () => editPatternAssignment(button.dataset.editPatternAssignment));
     $$('[data-focus-observation]').forEach(button => button.onclick = () => focusObservationCard(button.dataset.focusObservation));
     $$('[data-open-persona-pattern]').forEach(button => button.onclick = () => { closeDialogs(); focusPatternCard(button.dataset.openPersonaPattern); });
+    $$('[data-review-solution]').forEach(button => button.onclick = () => reviewSolution(button.dataset.reviewSolution, button.dataset.result));
   };
 
   $('#researchForm').onsubmit = saveResearch;
