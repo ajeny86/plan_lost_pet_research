@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Open the shared Persona Builder research workspace.">
+  <title>Persona Builder — Shared workspace</title>
+  <style>
+    :root{color-scheme:light;font-family:Arial,sans-serif;color:#141735;background:#f8f7fc}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:28px;background:radial-gradient(ellipse at 12% 0,#eae5fa,transparent 60%),#faf9fc}
+    main{width:min(650px,100%);padding:42px;background:#fff;border-radius:24px;box-shadow:0 18px 65px #34315612}
+    .brand{font:30px Georgia,serif;margin:0 0 6px}.brand span{color:#8085d7}.tagline{font-size:12px;color:#737991;margin:0 0 38px}.eyebrow{font-size:10px;letter-spacing:.16em;color:#777cac;font-weight:700}h1{font:36px/1.15 Georgia,serif;margin:12px 0 18px}p{font-size:15px;line-height:1.65;color:#646b83}a,button{font:600 14px/1.4 Arial,sans-serif;border-radius:11px;padding:14px 19px;cursor:pointer;text-decoration:none;display:inline-block}a{background:#515ac4;color:white;border:1px solid transparent}button{background:#f0edf9;color:#424879;border:1px solid #e5e0f1}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}small{display:block;font-size:12px;line-height:1.6;color:#7b8095;margin-top:25px}.local{padding:18px 20px;background:#f7f4fc;border-radius:14px;margin-top:24px}.local p{margin:8px 0 0;font-size:14px}[hidden]{display:none!important}@media(max-width:520px){main{padding:28px 24px}h1{font-size:29px}.actions>*{width:100%;text-align:center}}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand"><span>Persona</span> Builder</div>
+    <p class="tagline">From real stories to meaningful personas</p>
+    <span class="eyebrow">ONE SHARED WORKSPACE</span>
+    <h1>Your research, together.</h1>
+    <p id="status" role="status">Opening the shared research workspace…</p>
+    <section class="local" id="localData" hidden>
+      <b>A previous local workspace is saved in this browser.</b>
+      <p id="localSummary"></p>
+      <p>Download a backup before continuing. Your local copy will remain in this browser. It has not been uploaded or merged into the shared workspace.</p>
+    </section>
+    <div class="actions">
+      <button type="button" id="downloadBackup" hidden>Download local backup</button>
+      <a id="openWorkspace" href="https://persona-atlas.rightotter16.chatgpt.site/#dashboard">Open shared workspace</a>
+    </div>
+    <small>The shared workspace requires sign-in. Interview sources, analysis, patterns, personas and review history are stored there. GitHub hosts the project code and this entry page.</small>
+    <noscript><p>JavaScript is disabled. Use “Open shared workspace” to continue. If you used this GitHub version before, keep this browser's site data until you have recovered your local backup.</p></noscript>
+  </main>
+  <script type="module" src="gateway.js"></script>
+</body>
+</html>

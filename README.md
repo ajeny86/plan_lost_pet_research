@@ -21,7 +21,13 @@ node backend/server.mjs
 
 In **Settings**, set the analysis endpoint to `http://127.0.0.1:8787/api/analyze`. The backend rejects unconfigured requests and the interface creates no findings when analysis fails.
 
-The public GitHub Pages build is a static fallback and cannot provide shared database storage. The primary hosted Site provides D1 persistence. AI analysis remains on the separately deployed secure backend. Never place `AI_API_KEY` in `public`, browser storage or repository files.
+The GitHub Pages address opens the primary hosted workspace, which provides D1 persistence and sign-in. Both entry links therefore lead to the same application and database. AI analysis remains on the separately deployed secure backend. Never place `AI_API_KEY` in `public`, browser storage or repository files.
+
+## GitHub entry page and older local data
+
+GitHub Actions publishes `github-pages/` as an entry page, rather than a second application. It preserves the requested screen (`#research`, `#analysis`, `#personas`, etc.) when navigating to the shared Site. New browsers continue automatically; the target Site enforces sign-in and workspace access.
+
+If the old GitHub application has research work saved in the current browser, the entry page pauses and offers a complete JSON backup before continuing. It never clears, uploads or replaces that local copy. The backup uses the existing Settings import/export format. Review backups before restoring: importing a full backup replaces the active workspace; it is not an automatic merge. The `?stay=1` parameter displays the entry page without automatic navigation.
 
 ## Persistence
 
@@ -55,6 +61,6 @@ Test template images are illustrative and never treated as research participants
 ## Known prototype limits
 
 - PDF attachments are retained, but the researcher must paste extracted text before analysis.
-- The GitHub Pages fallback uses browser-local storage because GitHub Pages cannot run the D1 API. Use the primary hosted Site for cross-device work.
+- GitHub Pages is an entry link to the primary Site. It does not run a second database or independent application.
 - Public-source retrieval works only for accessible text pages and does not bypass logins or access restrictions.
 - Automatic duplicate detection, journey maps and user-story generation remain future work.
