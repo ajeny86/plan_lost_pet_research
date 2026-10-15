@@ -127,7 +127,7 @@
     const solutionAction = pendingSolutions > 0 || (state.solutions.length === 0 && (approvedPatterns.length > 0 || state.gaps.some(item => item.status === 'approved')));
 
     grid.innerHTML = [
-      step(1, 'Research Data', researchAction ? `${unprocessed} new source${unprocessed === 1 ? '' : 's'} must be analysed.` : `${state.research.length} source${state.research.length === 1 ? '' : 's'} stored; nothing is waiting for analysis.`, researchAction ? 'Go to AI Analysis' : 'Review research', researchAction ? 'analysis' : 'research', researchAction),
+      step(1, 'Research Data', researchAction ? `${unprocessed} new source${unprocessed === 1 ? '' : 's'} must be analysed.` : analysisAction ? `${state.research.length} source${state.research.length === 1 ? '' : 's'} stored; their observations or patterns still need review.` : 'All current research has been analysed and reviewed. Add a new questionnaire when you want to generate new evidence observations.', researchAction ? 'Go to AI Analysis' : analysisAction ? 'Continue review' : 'Add new questionnaire', researchAction || analysisAction ? 'analysis' : 'add-research', researchAction),
       step(2, 'AI Analysis', analysisAction ? `${pendingEvidence} observation${pendingEvidence === 1 ? '' : 's'} and ${pendingPatterns} pattern${pendingPatterns === 1 ? '' : 's'} still need review.` : patternsReadyForPersonas ? `${patternsReadyForPersonas} approved pattern${patternsReadyForPersonas === 1 ? '' : 's'} can now update a persona.` : 'All current observations and grouped patterns have been reviewed.', analysisAction ? 'Continue review' : patternsReadyForPersonas ? 'Use approved patterns' : 'Open analysis', analysisAction ? 'analysis' : patternsReadyForPersonas ? 'personas' : 'analysis', analysisAction || patternsReadyForPersonas > 0),
       step(3, 'Personas', pendingPersonaUpdates ? `${pendingPersonaUpdates} evidence update${pendingPersonaUpdates === 1 ? '' : 's'} must be synthesised and approved.` : pendingProposals ? `${pendingProposals} possible new persona${pendingProposals === 1 ? '' : 's'} must be reviewed.` : unvalidatedPersonas ? `${unvalidatedPersonas} research persona${unvalidatedPersonas === 1 ? '' : 's'} still need validation.` : activePersonas ? 'Current research personas are validated and ready for relationship mapping.' : 'No research persona has been created yet.', pendingProposals ? 'Review proposed personas' : 'Open personas', pendingProposals ? 'proposed' : 'personas', personaAction),
       step(4, 'Connections & Gaps', pendingGaps ? `${pendingGaps} relationship${pendingGaps === 1 ? '' : 's'} need review before they can guide solutions.` : activePersonas >= 2 && !state.gaps.length ? 'The personas are ready, but their connections and gaps have not been mapped yet.' : state.gaps.length ? 'The current relationship map has no pending review items.' : 'More than one research persona is needed to build a meaningful map.', pendingGaps ? 'Review relationships' : 'Open relationship map', 'gaps', gapAction),
@@ -143,7 +143,15 @@
     ].find(Boolean);
     document.querySelector('#workflowGuideSummary').textContent = firstAction ? `Next recommended step: ${firstAction}.` : 'The current workflow is complete. Add new research when it becomes available.';
     status(cloudMessage, cloudState);
-    grid.querySelectorAll('[data-workflow-go]').forEach(button => button.onclick = () => go(button.dataset.workflowGo));
+    grid.querySelectorAll('[data-workflow-go]').forEach(button => button.onclick = () => {
+      if (button.dataset.workflowGo === 'add-research') {
+        openResearch();
+        const sourceType = document.querySelector('#sourceType');
+        if (sourceType) sourceType.value = 'Survey';
+        return;
+      }
+      go(button.dataset.workflowGo);
+    });
   }
 
   const baseRender = render;
