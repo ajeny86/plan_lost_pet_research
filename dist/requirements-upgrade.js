@@ -941,6 +941,7 @@
   openPersonaDetails = function (pid) {
     originalOpenPersonaDetails(pid);
     $('#deleteTemplateBtn')?.remove();
+    $('#validatePersonaBtn')?.remove();
     const persona = state.personas.find(item => item.id === pid);
     const patterns = evidenceForPersona(persona);
     const sheet = $('#personaViewContent .persona-view-sheet');
@@ -979,6 +980,11 @@
     $$('#personaViewContent [data-source]').forEach(button => button.onclick = () => { closeDialogs(); openSource(button.dataset.source); });
     $$('#personaViewContent [data-open-persona-pattern]').forEach(button => button.onclick = () => { closeDialogs(); focusPatternCard(button.dataset.openPersonaPattern); });
     $$('#personaViewContent [data-restore-persona]').forEach(button => button.onclick = () => restorePersonaVersion(button.dataset.restorePersona, Number(button.dataset.historyVersion)));
+    $('#editPersonaBtn').className = 'secondary';
+    if (!persona.template && persona.status !== 'Validated') {
+      $('#editPersonaBtn').insertAdjacentHTML('beforebegin', '<button type="button" class="primary" id="validatePersonaBtn">Validate persona</button>');
+      $('#validatePersonaBtn').onclick = () => validatePersona(persona.id);
+    }
     if (persona.template) {
       $('#editPersonaBtn').insertAdjacentHTML('beforebegin', `<button type="button" class="secondary template-delete-button" id="deleteTemplateBtn">Delete test persona</button>`);
       $('#deleteTemplateBtn').onclick = () => {
@@ -997,6 +1003,25 @@
     Object.assign(persona, clone(snapshot.values), { version: persona.version + 1, updated: now(), template: false });
     log(`Restored ${persona.name} from version ${version}`);
     save(); closeDialogs(); render(); openPersonaDetails(pid); toast(`Version ${version} restored as a new version`);
+  }
+
+  function validatePersona(personaId) {
+    const persona = state.personas.find(item => item.id === personaId && !item.template);
+    if (!persona) return toast('This persona is no longer available');
+    const approvedPatterns = evidenceForPersona(persona).filter(pattern => pattern.status === 'approved');
+    if (!approvedPatterns.length) return toast('Link at least one approved grouped pattern before validating this persona');
+    persona.history ??= [];
+    persona.history.unshift({
+      version: persona.version,
+      values: { name: persona.name, role: persona.role, goal: persona.goal, status: persona.status, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [], patternIds: persona.patternIds || [] },
+      reason: `Validated after reviewing ${approvedPatterns.length} approved supporting pattern${approvedPatterns.length === 1 ? '' : 's'}`,
+      changed: now(), origin: 'researcher validation', evidencePatternIds: approvedPatterns.map(pattern => pattern.id),
+    });
+    persona.status = 'Validated';
+    persona.version += 1;
+    persona.updated = now();
+    log(`Validated persona: ${persona.name}`);
+    save(); render(); openPersonaDetails(persona.id); toast('Persona validated');
   }
 
   bindDynamic = function () {
