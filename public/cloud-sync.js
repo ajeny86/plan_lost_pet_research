@@ -170,13 +170,18 @@
       if (!response.ok) throw new Error(data.error || `Cloud returned ${response.status}`);
       cloudRevision = data.revision;
       if (data.state) {
-        const merged = mergeRepositories(data.state, state);
+        // Once migrated, cloud is authoritative. Re-merging stale device copies
+        // on every visit resurrects records deleted on other devices.
+        const alreadyMigrated = localStorage.getItem(`${KEY}-cloud-revision`) !== null;
+        const merged = alreadyMigrated ? { ...clone(EMPTY), ...data.state, settings: { ...EMPTY.settings, ...data.state.settings } } : mergeRepositories(data.state, state);
+        EvidenceIntegrity.normalise(merged);
         const changed = JSON.stringify(merged) !== JSON.stringify(data.state);
         state = merged;
         localSave();
         cloudReady = true;
         if (changed && hasResearchWork(state)) scheduleCloudSave(true);
         else status('Loaded from shared cloud database', 'saved');
+        localStorage.setItem(`${KEY}-cloud-revision`, String(cloudRevision));
       } else {
         cloudReady = true;
         scheduleCloudSave(true);

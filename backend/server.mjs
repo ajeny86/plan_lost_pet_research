@@ -4,7 +4,7 @@ import { isIP } from 'node:net';
 const port = Number(process.env.PORT || 8787);
 const apiKey = process.env.AI_API_KEY || '';
 const base = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
-const model = process.env.AI_MODEL || 'gpt-6.1-sol';
+const model = process.env.AI_MODEL || 'gpt-4.1-mini';
 const allowedOrigins = new Set([
   'http://127.0.0.1:4173',
   'https://persona-atlas.rightotter16.chatgpt.site',
@@ -73,6 +73,7 @@ Classification framework (apply strictly):
 
 Boundary rules:
 - "Used Facebook" is Action or Interaction, never Goal or Motivation by itself.
+- "Chose Facebook because many local people use it" is Decision-making, never Motivation. A channel's reach explains a tool choice, not a broader internal driver.
 - "Did not know who to contact" is Problem; "needed a clear contact order" is Need.
 - "Could not keep the animal because the landlord prohibited pets" is Constraint.
 - One excerpt may support more than one observation only when each interpretation is distinct and directly supported.
@@ -320,6 +321,7 @@ createServer(async (req, res) => {
     }
     if (pathname === '/api/synthesize-persona') {
       if (!body.persona || !Array.isArray(body.patterns) || !body.patterns.length) return reply(req, res, 400, { error: 'Persona and approved evidence are required' });
+      if (body.patterns.some(pattern => (pattern.observations || []).some(observation => observation.participantRole && observation.participantRole !== body.persona.role))) return reply(req, res, 422, { error: 'Evidence belongs to a different participant role. Review the selected patterns.' });
       const upstream = await fetch(`${base}/responses`, {
         method: 'POST',
         headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },

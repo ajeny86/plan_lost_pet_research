@@ -39,7 +39,7 @@
   groupApprovedObservations = function () {
     state.observations.filter(observation => observation.status === 'approved' && observation.suggestedPatternId && !observation.patternMatchApplied).forEach(observation => {
       const pattern = state.patterns.find(item => item.id === observation.suggestedPatternId && item.status !== 'rejected');
-      if (!pattern) return;
+      if (!pattern || !EvidenceIntegrity.compatible(state, observation, pattern)) return;
       pattern.observationIds = [...new Set([...(pattern.observationIds || []), observation.id])];
       pattern.reviewState = 'edited';
       pattern.history ??= [];
@@ -563,7 +563,7 @@
     const sourceRecords = [...new Map(evidence.map(item => [item.sourceId, source(item.sourceId)]).filter(([, item]) => item)).values()];
     const roleCounts = new Map();
     sourceRecords.map(explicitRoleFromSource).filter(Boolean).forEach(role => roleCounts.set(role, (roleCounts.get(role) || 0) + 1));
-    const role = [...roleCounts].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    const role = roleCounts.size === 1 ? [...roleCounts.keys()][0] : '';
     const explicitGoals = [...new Set(evidence.filter(item => item.dimension === 'Goal').map(item => item.text.trim()).filter(Boolean))];
     const allText = sourceRecords.map(item => `${item.reportStatus || ''}\n${item.content || ''}`).join('\n');
     const lostContext = sourceRecords.some(item => item.reportStatus === 'Lost') || /\b(lost|missing|disappeared|did not return home)\b/i.test(allText);
@@ -738,13 +738,14 @@
     const allPatternIds = update ? [...new Set([...(persona?.patternIds || []), ...update.patternIds])] : [];
     const patterns = allPatternIds.map(patternId => state.patterns.find(item => item.id === patternId)).filter(item => item?.status === 'approved');
     if (!persona || !patterns.length) return toast('This update no longer has available evidence');
+    if (patterns.some(pattern => !EvidenceIntegrity.roles(state, pattern).every(role => role === persona.role) || pattern.reviewState === 'edited')) return toast('Review the corrected patterns before synthesising this persona.');
     const trigger = $(`[data-review-persona-update="${updateId}"]`);
     if (trigger) { trigger.disabled = true; trigger.textContent = 'Synthesising evidence…'; }
     try {
       const endpoint = String(state.settings.endpoint || PUBLIC_AI_ENDPOINT).replace(/\/api\/analyze\/?$/, '/api/synthesize-persona');
       const evidencePackage = patterns.map(pattern => ({
         id: pattern.id, title: pattern.title, summary: pattern.summary,
-        observations: pattern.observationIds.map(observationId => obs(observationId)).filter(Boolean).map(observation => ({ dimension: observation.dimension, text: observation.text, excerpt: observation.excerpt, sourceId: observation.sourceId })),
+        observations: pattern.observationIds.map(observationId => obs(observationId)).filter(Boolean).map(observation => ({ dimension: observation.dimension, text: observation.text, excerpt: observation.excerpt, sourceId: observation.sourceId, participantRole: EvidenceIntegrity.sourceRole(state, observation) })),
       }));
       const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ persona: { name: persona.name, role: persona.role, mainGoal: persona.goal, behaviours: persona.behaviours || [], motivations: persona.motivations || [], constraints: persona.constraints || [], painPoints: persona.painPoints || [], needs: persona.needs || [] }, patterns: evidencePackage }) });
       const data = await response.json().catch(() => ({}));
@@ -845,7 +846,11 @@
       const observation = obs(pattern.observationIds[0]);
       if (observation) return `${DIMENSION_LABELS[observation.dimension] || observation.dimension}: ${observation.text}`;
     }
-    return pattern.title || pattern.summary || 'Untitled pattern';
+    const title = pattern.title || '';
+    const statement = title.replace(/^[^:]+:\s*/, '').trim();
+    const summary = pattern.summary || '';
+    if (statement && summary.length > statement.length && summary.toLowerCase().startsWith(statement.toLowerCase())) return `${DIMENSION_LABELS[patternDimension(pattern)] || 'Evidence'}: ${summary}`;
+    return title || summary || 'Untitled pattern';
   }
 
   function personasForPattern(pattern) {
@@ -864,7 +869,7 @@
   function evidenceContext(personas, dimension, sourceRecords) {
     const roles = [...new Set(sourceRecords.map(explicitRoleFromSource).filter(Boolean))];
     const rolePersona = { Owner: 'Owner', Finder: 'Temporary Carer', Spotter: 'Quick Spotter' };
-    let personaLabel = personas.length ? personas.map(persona => persona.name).join(', ') : roles.length === 1 && rolePersona[roles[0]] ? rolePersona[roles[0]] : '';
+    let personaLabel = roles.length === 1 && rolePersona[roles[0]] ? rolePersona[roles[0]] : roles.length > 1 ? 'Mixed roles — needs review' : personas.length ? personas.map(persona => persona.name).join(', ') : '';
     if (!personaLabel) personaLabel = roles.length > 1 ? 'Mixed roles — needs review' : 'Potential new persona — needs review';
     return `<div class="evidence-context"><span><b>Persona:</b> ${esc(personaLabel)}</span><span><b>Section:</b> ${esc(DIMENSION_LABELS[dimension] || dimension || 'Unclassified')}</span></div>`;
   }
@@ -1167,7 +1172,7 @@
         const existingObservation = state.observations.find(observation => observation.sourceId === sourceRecord.id && observation.dimension === (raw.dimension || 'Unknown') && observation.excerpt === raw.excerpt);
         const observationId = existingObservation?.id || id('obs');
         keyToId.set(raw.key, observationId);
-        const matchedPattern = state.patterns.find(pattern => pattern.id === raw.existingPatternId && pattern.status !== 'rejected');
+        const matchedPattern = state.patterns.find(pattern => pattern.id === raw.existingPatternId && pattern.status !== 'rejected' && EvidenceIntegrity.compatible(state, { sourceId: sourceRecord.id, dimension: raw.dimension }, pattern));
         if (matchedPattern) matchedPatternByKey.set(raw.key, matchedPattern.id);
         if (!existingObservation) state.observations.unshift({ id: observationId, sourceId: sourceRecord.id, dimension: raw.dimension || 'Unknown', text: raw.text, excerpt: raw.excerpt, evidenceType: raw.evidenceType === 'Interpretation' ? 'Interpretation' : 'Direct observation', status: 'pending', origin: 'AI', created: now(), reviewNote: '', suggestedPatternId: matchedPattern?.id || null });
       }
@@ -1176,7 +1181,9 @@
         const observationIds = unmatchedKeys.map(key => keyToId.get(key)).filter(Boolean);
         const counterEvidenceIds = (proposed.counterEvidenceKeys || []).map(key => keyToId.get(key)).filter(Boolean);
         const independentSources = new Set(observationIds.map(observationId => obs(observationId)?.sourceId));
-        if (observationIds.length >= 2 && independentSources.size >= 2) state.patterns.unshift({ id: id('pat'), title: proposed.title, summary: proposed.summary, observationIds, counterEvidenceIds, status: 'pending', created: now(), origin: 'AI grouping', history: [{ action: 'AI grouping', at: now(), observationIds: [...observationIds] }] });
+        const evidence = observationIds.map(observationId => obs(observationId)).filter(Boolean);
+        const provenance = new Set(evidence.map(item => `${EvidenceIntegrity.sourceRole(state, item) || 'Unknown'}:${item.dimension}`));
+        if (observationIds.length >= 2 && independentSources.size >= 2 && provenance.size === 1 && ![...provenance][0].startsWith('Unknown:')) state.patterns.unshift({ id: id('pat'), title: proposed.title, summary: proposed.summary, observationIds, counterEvidenceIds, status: 'pending', created: now(), origin: 'AI grouping', history: [{ action: 'AI grouping', at: now(), observationIds: [...observationIds] }] });
       }
       pending.forEach(record => { record.processed = true; });
       log(`AI analysed ${pending.length} source(s), compared them with ${existingPatterns.length} existing pattern(s), and proposed ${keyToId.size} observation(s)`);
