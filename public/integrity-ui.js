@@ -45,6 +45,21 @@
     container.querySelectorAll('[data-queue-task]').forEach(button => button.onclick = () => go(list[Number(button.dataset.queueTask)].target));
     const pending = container.parentElement.querySelector('.pending-count, .pending-badge');
     if (pending) pending.textContent = `${list.length} pending`;
+    let continuation = $('#dashboardContinuation');
+    if (!continuation) {
+      continuation = document.createElement('div');
+      continuation.id = 'dashboardContinuation';
+      continuation.className = 'dashboard-continuation span-3';
+      $('#dashboardView .dashboard-grid').append(continuation);
+    }
+    const proposed = state.proposals.filter(item => ['pending', 'drafted', 'assigned'].includes(item.status));
+    const preview = (title, target, label, records, describe, missing) => `<section class="panel dashboard-overview-section"><div class="panel-head"><div><span class="eyebrow">${label}</span><h2>${title}</h2></div><button type="button" class="link-btn" data-dashboard-section="${target}">View all →</button></div><div class="dashboard-preview-grid">${records.length ? records.slice(0, 3).map(item => `<button type="button" class="dashboard-preview-card" data-dashboard-section="${target}"><span class="dashboard-preview-status">${esc(item.status || 'Needs review')}</span><b>${esc(item.title || 'Untitled')}</b><span>${esc(describe(item))}</span><small>Open ${title} →</small></button>`).join('') : `<div class="dashboard-preview-empty"><b>${missing[0]}</b><p>${missing[1]}</p><button type="button" class="tiny" data-dashboard-section="${target}">Open ${title} →</button></div>`}</div></section>`;
+    continuation.innerHTML = [
+      preview('Proposed Personas', 'proposed', 'POTENTIAL NEW PROFILES', proposed, item => item.summary || 'Review the evidence before creating a new persona.', ['No proposed personas yet', 'Potential new profiles appear here when evidence supports a distinct additional role.']),
+      preview('Connections & Gaps', 'gaps', 'RELATIONSHIPS AND MISSING INFORMATION', state.gaps.filter(item => item.status !== 'rejected'), item => item.text || 'Review how these personas and their evidence connect.', ['No connections or gaps yet', 'Map relationships between personas once you have reviewed their supporting evidence.']),
+      preview('Proposed Solutions', 'solutions', 'EVIDENCE-LINKED HYPOTHESES', state.solutions.filter(item => item.status !== 'Rejected'), item => item.text || item.problem || 'Review this solution hypothesis and its supporting evidence.', ['No solution hypotheses yet', 'Propose a response to a reviewed need, pattern or gap.']),
+    ].join('');
+    continuation.querySelectorAll('[data-dashboard-section]').forEach(button => button.onclick = () => { go(button.dataset.dashboardSection); window.scrollTo({ top: 0, behavior: 'instant' }); });
   };
   assessProposals = function () {
     const threshold = Number(state.settings.proposalThreshold) || 3;
@@ -64,6 +79,24 @@
     save(); render(); toast('Role-based evidence assessed. A shared need alone does not create a new persona.');
   };
   $('#assessProposalsBtn').onclick = assessProposals;
+  const navigation = $('#nav');
+  navigation.insertAdjacentHTML('afterend', '<div class="nav-scroll-tools" hidden><button type="button" class="nav-scroll-arrow" id="navScrollPrevious" aria-label="Scroll sections left">‹</button><div class="nav-scroll-guidance"><span>Swipe to see all sections</span><div class="nav-scroll-track" aria-hidden="true"><span id="navScrollThumb"></span></div></div><button type="button" class="nav-scroll-arrow" id="navScrollNext" aria-label="Scroll sections right">›</button></div>');
+  const menuTools = navigation.nextElementSibling;
+  function updateMenuScroll() {
+    const maximum = navigation.scrollWidth - navigation.clientWidth;
+    menuTools.hidden = maximum < 3;
+    $('#navScrollPrevious').disabled = navigation.scrollLeft < 2;
+    $('#navScrollNext').disabled = navigation.scrollLeft > maximum - 2;
+    const fraction = Math.min(100, Math.max(18, navigation.clientWidth / Math.max(navigation.scrollWidth, 1) * 100));
+    $('#navScrollThumb').style.width = `${fraction}%`;
+    $('#navScrollThumb').style.left = `${maximum > 0 ? Math.max(0, Math.min(1, navigation.scrollLeft / maximum)) * (100 - fraction) : 0}%`;
+  }
+  $('#navScrollPrevious').onclick = () => navigation.scrollBy({ left: -Math.max(180, navigation.clientWidth * .75), behavior: 'smooth' });
+  $('#navScrollNext').onclick = () => navigation.scrollBy({ left: Math.max(180, navigation.clientWidth * .75), behavior: 'smooth' });
+  navigation.addEventListener('scroll', updateMenuScroll, { passive: true });
+  window.addEventListener('resize', updateMenuScroll);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(updateMenuScroll).observe(navigation);
+  requestAnimationFrame(updateMenuScroll);
   for (const [metric, target, label] of [
     ['metricResearch', 'research', 'Open Research Data'],
     ['metricPatterns', 'analysis', 'Open AI Analysis patterns'],
