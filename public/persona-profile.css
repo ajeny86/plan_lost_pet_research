@@ -2,6 +2,9 @@
 .persona-card img{display:block;width:calc(100% - 16px);height:auto;aspect-ratio:4/3;object-fit:cover;object-position:center;margin:8px;border-radius:17px;background:linear-gradient(145deg,#f0efff 0%,#fff9f1 100%)}
 .persona-view-dialog{position:fixed;inset:4vh auto auto 50%;transform:translateX(-50%);margin:0;width:min(690px,94vw);max-height:92vh;border-radius:28px;overflow:auto;background:#fff;padding:0;box-shadow:0 32px 90px rgba(35,42,94,.24)}
 .persona-view-dialog::backdrop{background:rgba(28,32,67,.42);backdrop-filter:blur(7px)}
+.persona-view-dialog{max-height:92dvh;overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+html.modal-scroll-locked{overflow:hidden;overscroll-behavior:none}
+body.modal-scroll-locked{position:fixed;left:0;right:0;overflow:hidden;overscroll-behavior:none}
 #personaViewDialog>.persona-view-close{position:sticky;z-index:20;top:12px;right:12px;display:block!important;width:44px!important;height:44px!important;margin:12px 12px -56px auto;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;color:#252c53!important;font-size:36px;font-weight:700;line-height:1;text-shadow:0 0 3px #fff,0 0 7px #fff,0 1px 10px #fff;box-shadow:none!important;outline:none!important;cursor:pointer}
 #personaViewDialog>.persona-view-close:hover{color:#4651a8!important}
 #personaViewDialog>.persona-view-close:focus-visible{text-decoration:none!important;color:#141b40!important;font-weight:900}

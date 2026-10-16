@@ -1,5 +1,32 @@
 /* Time-bounded requests, accurate queues and role-based proposal review. */
 (() => {
+  // iOS can scroll the document behind a native dialog. Lock the document,
+  // preserving its position until the last modal closes (including nested ones).
+  let modalScrollPosition = null;
+  let previousBodyTop = '';
+  function syncModalScrollLock() {
+    const modalOpen = !!document.querySelector('dialog[open]');
+    if (modalOpen && modalScrollPosition === null) {
+      modalScrollPosition = window.scrollY;
+      previousBodyTop = document.body.style.top;
+      document.body.style.top = `-${modalScrollPosition}px`;
+      document.documentElement.classList.add('modal-scroll-locked');
+      document.body.classList.add('modal-scroll-locked');
+    } else if (!modalOpen && modalScrollPosition !== null) {
+      const restorePosition = modalScrollPosition;
+      modalScrollPosition = null;
+      document.documentElement.classList.remove('modal-scroll-locked');
+      document.body.classList.remove('modal-scroll-locked');
+      document.body.style.top = previousBodyTop;
+      window.scrollTo({ top: restorePosition, behavior: 'instant' });
+    }
+  }
+  const modalScrollObserver = new MutationObserver(syncModalScrollLock);
+  document.querySelectorAll('dialog').forEach(dialog => {
+    modalScrollObserver.observe(dialog, { attributes: true, attributeFilter: ['open'] });
+    dialog.addEventListener('close', syncModalScrollLock);
+  });
+  syncModalScrollLock();
   const nativeFetch = window.fetch.bind(window);
   window.fetch = async function (input, options = {}) {
     const url = typeof input === 'string' ? input : input.url;
