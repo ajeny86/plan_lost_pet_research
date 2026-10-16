@@ -1,34 +1,34 @@
-/* Public classroom mode: isolated local data and no outbound API requests. */
+/* Public classroom mode: isolated local data plus real server-side AI. */
 (() => {
-  const message = 'Public demo: sample results are preloaded. Live AI and cloud writes are disabled.';
-  window.fetch = async () => { throw new Error(message); };
-  state.settings.endpoint = '';
-  state.settings.model = 'Live AI disabled';
-  state.settings.provider = 'Public classroom demo';
+  const apiOrigin = 'https://plan-lost-pet-research.onrender.com';
+  const apiPaths = new Set(['/api/analyze', '/api/synthesize-persona', '/api/merge-patterns', '/api/extract-metadata', '/api/import-url']);
+  const liveFetch = window.fetch.bind(window);
+  const message = 'Live AI is available through the secure backend (GPT-4.1 mini). Sample results are preloaded; new AI output must be reviewed.';
+  window.fetch = async (input, options = {}) => {
+    const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+    if (url.origin !== apiOrigin || !apiPaths.has(url.pathname)) throw new Error('This demo saves work only in your browser. The private workspace database is not connected.');
+    return liveFetch(input, options);
+  };
+  state.settings.endpoint = `${apiOrigin}/api/analyze`;
+  state.settings.model = 'gpt-4.1-mini';
+  state.settings.provider = 'OpenAI';
   EvidenceIntegrity.normalise(state);
   const banner = document.createElement('section');
   banner.className = 'classroom-banner';
-  banner.innerHTML = '<div><b>PUBLIC CLASSROOM DEMO</b><span>All interviews, patterns and personas are synthetic examples. Changes stay in your browser. No live AI calls.</span></div><button type="button" id="resetClassroomDemo">Reset my demo</button>';
+  banner.innerHTML = '<div><b>PUBLIC CLASSROOM DEMO · LIVE AI</b><span>Preloaded interviews, patterns and personas are synthetic examples. Real AI analysis is available. Changes stay in your browser.</span></div><button type="button" id="resetClassroomDemo">Reset my demo</button>';
   document.querySelector('main').prepend(banner);
   const baseRender = render;
   function applyDemoState() {
     $('#aiConfigNotice').className = 'notice neutral';
     $('#aiConfigNotice').textContent = message;
-    $('#analyseBtn').disabled = true;
-    $('#analyseBtn').textContent = 'Sample analysis preloaded';
-    $('#reanalyseBtn').disabled = true;
-    $('#reanalyseBtn').title = 'Reanalysis requires the private workspace and an authorised backend.';
-    $('#quickRefresh').disabled = true;
-    $('#quickRefresh').title = 'External source refresh is disabled in the public demo.';
-    $$('[data-review-persona-update]').forEach(button => {
-      button.disabled = true; button.textContent = 'Live AI synthesis disabled in demo';
-    });
+    $('#reanalyseBtn').disabled = false;
+    $('#reanalyseBtn').title = 'Run live AI analysis on the research saved in your demo.';
     $('#workflowGuideSummary').textContent = 'Explore the complete sample workflow: research → evidence review → personas → connections → solution hypotheses.';
     $('#cloudSyncStatus').textContent = 'Public demo · saved in this browser only';
     $('#cloudSyncStatus').dataset.state = 'local';
     $('#workflowStepGrid').innerHTML = [
       ['Research Data', 'Six fictional interviews: two examples per participant role.', 'research'],
-      ['AI Analysis', 'Inspect prepared sample observations, approve a pending pattern and follow its sources.', 'analysis'],
+      ['AI Analysis', 'Inspect sample evidence or use Reanalyse all research to run real AI analysis.', 'analysis'],
       ['Personas', 'Open three sample profiles, inspect section evidence and compare cards.', 'personas'],
       ['Connections & Gaps', 'Explore example relationships and filter their arrows.', 'gaps'],
       ['Proposed Solutions', 'Approve, edit or reject a clearly marked solution hypothesis.', 'solutions'],

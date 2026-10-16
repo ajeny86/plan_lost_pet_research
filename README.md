@@ -21,13 +21,13 @@ node backend/server.mjs
 
 In **Settings**, set the analysis endpoint to `http://127.0.0.1:8787/api/analyze`. The backend rejects unconfigured requests and the interface creates no findings when analysis fails.
 
-The GitHub Pages address opens a public classroom demo with synthetic examples and no sign-in. The private hosted workspace remains separate and provides D1 persistence. Live AI analysis is disabled in the public demo; the private workspace uses the separately deployed secure backend. Never place `AI_API_KEY` in browser code, storage or repository files.
+The GitHub Pages address opens a public classroom demo with synthetic examples and no sign-in. The private hosted workspace remains separate and provides D1 persistence. The public demo and private workspace use the separately deployed secure AI backend. The demo has no application-level request quota, as requested by the project owner. Never place `AI_API_KEY` in browser code, storage or repository files.
 
 ## GitHub entry page and older local data
 
 GitHub Actions runs `node scripts/build-public-demo.mjs` and publishes `github-pages/`. The public demo is available at `https://ajeny86.github.io/plan_lost_pet_research/demo/`; the root entry page preserves the requested screen and navigates there. It never redirects classroom visitors to ChatGPT sign-in. The private workspace is still available at `https://persona-atlas.rightotter16.chatgpt.site/` with its existing access restrictions.
 
-The demo uses six independently authored fictional interview scenarios, prepared observations, grouped patterns, three personas, relationship hypotheses and a solution hypothesis. These are explicitly labelled synthetic examples, not results of live AI analysis. The demo blocks API requests, never calls the private state endpoint and uses its own browser storage key. Changes by one visitor do not affect classmates or the private workspace. Reset my demo restores only the synthetic examples.
+The demo uses six independently authored fictional interview scenarios, prepared observations, grouped patterns, three personas, relationship hypotheses and a solution hypothesis. The preloaded results are explicitly labelled synthetic examples. Visitors can run real AI analysis with Reanalyse all research or upload new research, synthesise a persona and request semantic pattern merging. Only the known AI and public URL-import endpoints are allowed; the private state endpoint is never called. Each visitor has a separate browser storage key. Changes do not affect classmates or the private workspace. Reset my demo restores only the synthetic examples.
 
 If the old GitHub application has research work saved in the current browser, the entry page pauses and offers a complete JSON backup before continuing. It never clears, uploads or replaces that local copy. The backup uses the existing Settings import/export format. Review backups before restoring: importing a full backup replaces the active workspace; it is not an automatic merge. The `?stay=1` parameter displays the entry page without automatic navigation.
 
@@ -63,6 +63,6 @@ Test template images are illustrative and never treated as research participants
 ## Known prototype limits
 
 - PDF attachments are retained, but the researcher must paste extracted text before analysis.
-- Public classroom changes are browser-local and do not sync to the private D1 database. Live AI calls are disabled there to prevent unauthenticated use of the private backend.
+- Public classroom changes are browser-local and do not sync to the private D1 database. Live AI uses the server's API key and GPT-4.1 mini; provider billing and account limits still apply.
 - Public-source retrieval works only for accessible text pages and does not bypass logins or access restrictions.
 - Automatic duplicate detection, journey maps and user-story generation remain future work.

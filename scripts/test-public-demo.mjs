@@ -29,4 +29,9 @@ const app = readFileSync(new URL('../github-pages/demo/app.js', import.meta.url)
 assert.ok(!app.includes('plan-lost-pet-research.onrender.com'));
 assert.ok(app.includes(DEMO_KEY));
 assert.ok(!app.includes("const KEY='persona-builder-priority1-v1'"));
-console.log('Public demo: isolated storage, synthetic provenance, exact quotes and disabled cloud/AI access passed.');
+const runtime = readFileSync(new URL('../public-demo/runtime.js', import.meta.url), 'utf8');
+assert.ok(runtime.includes("const apiOrigin = 'https://plan-lost-pet-research.onrender.com'"));
+assert.ok(runtime.includes("'/api/analyze'"));
+assert.ok(!runtime.includes("'/api/state'"));
+assert.ok(runtime.includes("state.settings.model = 'gpt-4.1-mini'"));
+console.log('Public demo: isolated storage, synthetic provenance, exact quotes, live AI and blocked private database passed.');
