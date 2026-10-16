@@ -64,6 +64,22 @@
     save(); render(); toast('Role-based evidence assessed. A shared need alone does not create a new persona.');
   };
   $('#assessProposalsBtn').onclick = assessProposals;
+  for (const [metric, target, label] of [
+    ['metricResearch', 'research', 'Open Research Data'],
+    ['metricPatterns', 'analysis', 'Open AI Analysis patterns'],
+    ['metricPersonas', 'personas', 'Open Personas'],
+    ['metricSuggestions', 'analysis', 'Open AI Analysis for review'],
+  ]) {
+    const card = document.getElementById(metric)?.closest('article');
+    if (!card) continue;
+    card.classList.add('metric-link');
+    card.setAttribute('role', 'link'); card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-label', label); card.title = label;
+    card.onclick = () => go(target);
+    card.onkeydown = event => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); go(target); }
+    };
+  }
   const previousMerge = mergePatterns;
   mergePatterns = async function () {
     const selected = $$('[data-pattern-select]:checked').map(box => state.patterns.find(p => p.id === box.dataset.patternSelect)).filter(Boolean);

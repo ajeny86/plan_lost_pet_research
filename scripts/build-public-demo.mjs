@@ -22,7 +22,7 @@ let html = readFileSync(path.join(root, 'public/index.html'), 'utf8');
 html = html.replace('<title>Persona Builder</title>', '<title>Persona Builder — Public Classroom Demo</title>')
   .replace('</head>', '<link rel="stylesheet" href="demo.css"></head>')
   .replace(/<script src="app.js[^\"]*"><\/script>/, '<script src="demo-data.js"></script><script src="app.js?v=demo1"></script>')
-  .replace(/<script src="cloud-sync.js[^\"]*"><\/script>/, '<script src="demo-runtime.js"></script>');
+  .replace(/<script src="cloud-sync.js[^\"]*"><\/script>/, '<script src="demo-runtime.js?v=2"></script>');
 if (html.includes('cloud-sync.js')) throw new Error('Cloud synchronisation must not ship in the public demo');
 writeFileSync(path.join(output, 'index.html'), html);
 console.log(`Built public demo: ${data.research.length} synthetic sources, ${data.observations.length} observations, ${data.patterns.length} patterns and ${data.personas.length} personas.`);
