@@ -4,7 +4,7 @@
 .persona-view-dialog::backdrop{background:rgba(28,32,67,.42);backdrop-filter:blur(7px)}
 #personaViewDialog>.persona-view-close{position:sticky;z-index:20;top:12px;right:12px;display:block!important;width:44px!important;height:44px!important;margin:12px 12px -56px auto;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;color:#252c53!important;font-size:36px;font-weight:700;line-height:1;text-shadow:0 0 3px #fff,0 0 7px #fff,0 1px 10px #fff;box-shadow:none!important;outline:none!important;cursor:pointer}
 #personaViewDialog>.persona-view-close:hover{color:#4651a8!important}
-#personaViewDialog>.persona-view-close:focus-visible{text-decoration:underline;text-underline-offset:5px}
+#personaViewDialog>.persona-view-close:focus-visible{text-decoration:none!important;color:#141b40!important;font-weight:900}
 .persona-view-content{padding:0;max-height:none;overflow:visible}
 .persona-view-visual{position:relative;width:100%;aspect-ratio:4/3;padding:14px;overflow:hidden;background:linear-gradient(145deg,#ececff,#fff7ec)}
 .persona-view-image{position:absolute;inset:14px;display:block;width:calc(100% - 28px);height:calc(100% - 28px);object-fit:cover;object-position:center;border-radius:22px}
